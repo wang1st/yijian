@@ -27,6 +27,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import dev.patrickgold.florisboard.R
@@ -42,6 +44,7 @@ import org.florisboard.lib.compose.stringRes
 @Composable
 fun TranslationScreen() {
     val prefs by FlorisPreferenceStore
+    val scope = rememberCoroutineScope()
     val apiKey by prefs.translation.apiKey.collectAsState()
     val baseUrl by prefs.translation.baseUrl.collectAsState()
     val model by prefs.translation.model.collectAsState()
@@ -66,21 +69,21 @@ fun TranslationScreen() {
                     value = apiKey,
                     password = true,
                     shapes = ListItemDefaults.segmentedShapes(0, count),
-                    onSave = { prefs.translation.apiKey.set(it) },
+                    onSave = { v -> scope.launch { prefs.translation.apiKey.set(v) } },
                 )
                 TextEditPreference(
                     title = stringRes(R.string.pref__translation__base_url__label),
                     summary = "https://api.deepseek.com",
                     value = baseUrl,
                     shapes = ListItemDefaults.segmentedShapes(1, count),
-                    onSave = { prefs.translation.baseUrl.set(it) },
+                    onSave = { v -> scope.launch { prefs.translation.baseUrl.set(v) } },
                 )
                 TextEditPreference(
                     title = stringRes(R.string.pref__translation__model__label),
                     summary = "deepseek-chat",
                     value = model,
                     shapes = ListItemDefaults.segmentedShapes(2, count),
-                    onSave = { prefs.translation.model.set(it) },
+                    onSave = { v -> scope.launch { prefs.translation.model.set(v) } },
                 )
             }
         }
