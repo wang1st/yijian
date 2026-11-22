@@ -106,7 +106,7 @@ fun EmojiSearchLayout(
         }
     }
     val inputMethod = remember {
-        ImeController(storageController, imeController.clipboardManager, imeController.nlpManager, ImeState(editor = editor), imeController.touchModelCache)
+        ImeController(storageController, imeController.clipboardManager, ImeState(editor = editor), imeController.touchModelCache)
     }
 
     LaunchedEffect(imeState.model) {

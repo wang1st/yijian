@@ -68,10 +68,16 @@ data class TranslationResult(
  */
 class TranslationManager(
     private val imeController: ImeController,
-    private val nlpManager: NlpManager,
 ) {
     private val prefs by FlorisPreferenceStore
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /**
+     * Resolved lazily: [NlpManager]'s constructor reads [FlorisApplication.imeController],
+     * so it must not be instantiated while [FlorisApplication.onCreate] is still running.
+     */
+    private val nlpManager: NlpManager
+        get() = dev.patrickgold.florisboard.FlorisApplication.getHack().nlpManager.value
 
     @Volatile private var inFlight = false
 
