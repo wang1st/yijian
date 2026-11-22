@@ -145,7 +145,7 @@ class TranslationManager(
         else -> ""
     }
 
-    private fun applyTranslation(english: String, trigger: Char, result: TranslationResult) {
+    private suspend fun applyTranslation(english: String, trigger: Char, result: TranslationResult) {
         val punct = zhPunct(trigger)
         val candidates = result.translations.map { raw ->
             raw.trim().trimEnd('。', '！', '？', '.', '!', '?') + punct
