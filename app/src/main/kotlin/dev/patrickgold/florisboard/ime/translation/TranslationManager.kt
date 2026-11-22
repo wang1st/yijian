@@ -1,0 +1,245 @@
+/*
+ * Copyright (C) 2026 The yijian Contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package dev.patrickgold.florisboard.ime.translation
+
+import androidx.compose.ui.graphics.vector.ImageVector
+import dev.patrickgold.florisboard.app.FlorisPreferenceStore
+import dev.patrickgold.florisboard.ime.editor.InputAttributes
+import dev.patrickgold.florisboard.ime.keyboard3.ImeController
+import dev.patrickgold.florisboard.ime.nlp.NlpManager
+import dev.patrickgold.florisboard.ime.nlp.SuggestionCandidate
+import dev.patrickgold.florisboard.ime.nlp.SuggestionProvider
+import dev.patrickgold.florisboard.lib.devtools.flogError
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
+import org.k3lp.lib.text.K3String
+import org.k3lp.lib.text.asK3String
+import java.net.HttpURLConnection
+import java.net.URL
+
+/**
+ * A suggestion candidate that carries a Chinese translation of what the user typed in English.
+ * [text] is the translation (committed on click), [secondaryText] shows the corrected English.
+ */
+data class TranslationSuggestionCandidate(
+    override val text: CharSequence,
+    val correctedEnglish: String,
+    val note: String,
+    override val confidence: Double = 1.0,
+    override val isEligibleForAutoCommit: Boolean = false,
+    override val isEligibleForUserRemoval: Boolean = false,
+    override val icon: ImageVector? = null,
+    override val sourceProvider: SuggestionProvider? = null,
+) : SuggestionCandidate {
+    override val secondaryText: CharSequence?
+        get() = correctedEnglish.ifBlank { null }
+}
+
+data class TranslationResult(
+    val corrected: String,
+    val translations: List<String>,
+    val note: String,
+)
+
+/**
+ * yijian AI translation pipeline: watches for sentence-ending punctuation, sends the
+ * (possibly broken) English sentence to DeepSeek together with surrounding context,
+ * then replaces the English with the best Chinese translation and offers the other
+ * interpretations as smartbar candidates.
+ */
+class TranslationManager(
+    private val imeController: ImeController,
+    private val nlpManager: NlpManager,
+) {
+    private val prefs by FlorisPreferenceStore
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    @Volatile private var inFlight = false
+
+    /** The most recent translation auto-committed by us; used to swap it for an alternative. */
+    @Volatile internal var lastCommitted: String? = null
+
+    /**
+     * Called from [ImeController]'s emitText for every committed character. Triggers a
+     * translation when a sentence-ending character is typed.
+     */
+    fun maybeTranslateOnPunct(value: K3String) {
+        if (!prefs.translation.enabled.get()) return
+        val typed = value.toText()
+        val trigger = typed.lastOrNull() ?: return
+        if (trigger != '.' && trigger != '!' && trigger != '?' && trigger != '\n') return
+        if (inFlight) return
+        val state = imeController.snapshotState()
+        val info = state.editor.info
+        // Never touch password fields or raw input editors (games, terminals)
+        if (info.isRawInputEditor) return
+        if (info.inputAttributes.variation == InputAttributes.Variation.PASSWORD) return
+        val beforeCursor = state.editor.getSurroundingText(500, 0).textBefore
+        val (english, context) = extractSentence(beforeCursor) ?: return
+        inFlight = true
+        scope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) { callApiBlocking(english, context) }
+                applyTranslation(english, trigger, result)
+            } catch (e: Exception) {
+                flogError { "yijian translation failed: ${e.message}" }
+            } finally {
+                inFlight = false
+            }
+        }
+    }
+
+    fun resetLastCommitted() {
+        lastCommitted = null
+    }
+
+    /**
+     * Splits [beforeCursor] (which ends with a trigger punctuation) into the English sentence
+     * tail and the preceding context. Returns null if the tail does not look like an
+     * English sentence worth translating.
+     */
+    private fun extractSentence(beforeCursor: String): Pair<String, String>? {
+        val content = beforeCursor.dropLast(1)
+        val boundaries = listOf('.', '!', '?', '\n', '。', '！', '？')
+        var idx = -1
+        for (b in boundaries) {
+            val i = content.lastIndexOf(b)
+            if (i > idx) idx = i
+        }
+        val tail = content.substring(idx + 1).trim()
+        if (tail.isEmpty()) return null
+        // Already Chinese? Don't re-translate.
+        if (tail.any { it.code > 0x2E7F }) return null
+        val letters = tail.count { it.isLetter() && it.code < 128 }
+        if (letters < 2) return null
+        // Require at least two words or a reasonably long single token, to avoid
+        // triggering on "Mr.", "3.", "e.g." style fragments.
+        if (!tail.any { it.isWhitespace() } && tail.length < 12) return null
+        val context = content.substring(0, idx + 1).takeLast(200)
+        return tail to context
+    }
+
+    private fun zhPunct(src: Char): String = when (src) {
+        '.' -> "。"
+        '!' -> "！"
+        '?' -> "？"
+        else -> ""
+    }
+
+    private fun applyTranslation(english: String, trigger: Char, result: TranslationResult) {
+        val punct = zhPunct(trigger)
+        val candidates = result.translations.map { raw ->
+            raw.trim().trimEnd('。', '！', '？', '.', '!', '?') + punct
+        }.filter { it.isNotBlank() }
+        if (candidates.isEmpty()) return
+        var committed = false
+        // InputConnection IPC must happen on the main thread
+        withContext(Dispatchers.Main) {
+            imeController.updateStateBlocking {
+                val committedTail = english + trigger
+                val cur = state.editor.getSurroundingText(committedTail.length + 5, 0).textBefore
+                if (cur.endsWith(committedTail)) {
+                    state.editor.deleteSurroundingText(committedTail.length, 0)
+                    val best = candidates.first()
+                    emitText(best.asK3String())
+                    lastCommitted = best
+                    committed = true
+                } else {
+                    // The user edited meanwhile; do not touch the editor.
+                    lastCommitted = null
+                }
+            }
+        }
+        // Offer alternative interpretations in the smartbar (outside the state block,
+        // suggestDirectly uses runBlocking internally).
+        if (committed && candidates.size > 1) {
+            nlpManager.suggestDirectly(candidates.mapIndexed { i, t ->
+                TranslationSuggestionCandidate(
+                    text = t,
+                    correctedEnglish = result.corrected,
+                    note = result.note,
+                    confidence = 1.0 - i * 0.1,
+                )
+            })
+        }
+    }
+
+    private fun callApiBlocking(english: String, context: String): TranslationResult {
+        val baseUrl = prefs.translation.baseUrl.get().trimEnd('/')
+        val apiKey = prefs.translation.apiKey.get()
+        require(apiKey.isNotBlank()) { "API key not configured" }
+        val model = prefs.translation.model.get()
+
+        val systemPrompt = """你是「译键」输入法的翻译引擎。用户是英文水平有限的中国人，输入的英文常有拼写和语法错误，也可能用词不符合口语习惯。任务：
+1. 纠正他的英文（corrected）。
+2. 结合上下文把他的意思翻译成地道的中文（口语/聊天语气）。
+3. 如果这句话有不止一种合理解释，在 translations 里给出最多 3 个不同意图的译文，按贴切度排序；句意明确时只给 1 个。
+4. 用 note 用中文一句话指出他的拼写/语法/表达问题（没有则空字符串）。
+
+严格只输出 JSON，格式：{"corrected":"...","translations":["..."],"note":"..."}。不要输出任何其他内容。"""
+
+        val userContent = "上下文：${context.ifBlank { "（对话刚开始）" }}\n\n要翻译的句子：$english"
+
+        val messages = JSONArray()
+            .put(JSONObject().put("role", "system").put("content", systemPrompt))
+            .put(JSONObject().put("role", "user").put("content", userContent))
+        val body = JSONObject()
+            .put("model", model)
+            .put("messages", messages)
+            .put("temperature", 0.3)
+            .put("max_tokens", 800)
+            .put("response_format", JSONObject().put("type", "json_object"))
+
+        val conn = (URL("$baseUrl/chat/completions").openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            connectTimeout = 15000
+            readTimeout = 45000
+            setRequestProperty("Content-Type", "application/json")
+            setRequestProperty("Authorization", "Bearer $apiKey")
+            doOutput = true
+        }
+        try {
+            conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+            val code = conn.responseCode
+            val text = (if (code in 200..299) conn.inputStream else conn.errorStream)
+                ?.use { it.readBytes() }?.decodeToString() ?: error("empty response")
+            if (code !in 200..299) error("HTTP $code: ${text.take(200)}")
+            val content = JSONObject(text)
+                .getJSONArray("choices").getJSONObject(0)
+                .getJSONObject("message").getString("content")
+            val jo = JSONObject(content)
+            val corrected = jo.optString("corrected")
+            val translationsArr = jo.getJSONArray("translations")
+            val translations = (0 until translationsArr.length())
+                .map { translationsArr.getString(it) }
+                .filter { it.isNotBlank() }
+            if (translations.isEmpty()) error("model returned no translations")
+            return TranslationResult(
+                corrected = corrected,
+                translations = translations.take(3),
+                note = jo.optString("note"),
+            )
+        } finally {
+            conn.disconnect()
+        }
+    }
+}

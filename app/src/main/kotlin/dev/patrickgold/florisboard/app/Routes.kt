@@ -70,6 +70,7 @@ import dev.patrickgold.florisboard.app.settings.localization.SubtypeEditorScreen
 import dev.patrickgold.florisboard.app.settings.media.MediaScreen
 import dev.patrickgold.florisboard.app.settings.smartbar.SmartbarScreen
 import dev.patrickgold.florisboard.app.settings.theme.ThemeScreen
+import dev.patrickgold.florisboard.app.settings.translation.TranslationScreen
 import dev.patrickgold.florisboard.app.settings.theme.ThemeSelectionScreen
 import dev.patrickgold.florisboard.app.settings.theme.ThemeSelectionScreenAction
 import dev.patrickgold.florisboard.app.settings.typing.TypingScreen
@@ -151,6 +152,10 @@ object Routes {
         @Serializable
         @Deeplink("settings/smartbar")
         object Smartbar
+
+        @Serializable
+        @Deeplink("settings/translation")
+        object Translation
 
         @Serializable
         @Deeplink("settings/typing")
@@ -306,6 +311,7 @@ object Routes {
             composableWithDeepLink(Settings.Keyboard.InputFeedback::class) { InputFeedbackScreen() }
 
             composableWithDeepLink(Settings.Smartbar::class) { SmartbarScreen() }
+            composableWithDeepLink(Settings.Translation::class) { TranslationScreen() }
 
             composableWithDeepLink(Settings.Typing::class) { TypingScreen() }
 

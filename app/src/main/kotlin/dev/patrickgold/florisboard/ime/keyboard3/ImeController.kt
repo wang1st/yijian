@@ -44,8 +44,11 @@ import dev.patrickgold.florisboard.ime.keyboard3.touch.TouchModelOptions
 import dev.patrickgold.florisboard.ime.media.emoji.EmojiSuggestionType
 import dev.patrickgold.florisboard.ime.nlp.BreakIterators
 import dev.patrickgold.florisboard.ime.nlp.ClipboardSuggestionCandidate
+import dev.patrickgold.florisboard.ime.nlp.NlpManager
 import dev.patrickgold.florisboard.ime.nlp.SuggestionCandidate
 import dev.patrickgold.florisboard.ime.text.key.KeyVariation
+import dev.patrickgold.florisboard.ime.translation.TranslationManager
+import dev.patrickgold.florisboard.ime.translation.TranslationSuggestionCandidate
 import dev.patrickgold.florisboard.lib.FlorisLocale
 import dev.patrickgold.florisboard.lib.devtools.flogDebug
 import kotlinx.coroutines.CoroutineScope
@@ -83,6 +86,7 @@ val LocalImeController = staticCompositionLocalOf<ImeController> {
 class ImeController(
     storageController: StorageController,
     val clipboardManager: ClipboardManager, // TODO ClipboardController
+    val nlpManager: NlpManager,
     initialState: ImeState = ImeState(),
     val touchModelCache: TouchModelCache = TouchModelCache(),
 ) : K3InputMethod<ImeState, ImeEditor, ImeController.UpdateImeStateScope>(
@@ -93,6 +97,7 @@ class ImeController(
     private val breakIterators = BreakIterators()
     private val expectedContentQueue = ExpectedContentQueue()
     private var emitInterceptor = AtomicReference<EmitInterceptor?>(null)
+    private val translationManager = TranslationManager(this, nlpManager)
 
     val activeTouchModelOptions = combine<Any, TouchModelOptions>(
         prefs.keyboard.numberRow.asFlow(),
@@ -320,6 +325,7 @@ class ImeController(
             super.emitText(value)
             expectedContentQueue.push(state.content)
             reevaluateInputShiftState()
+            translationManager.maybeTranslateOnPunct(value)
         }
 
         override fun emitDescriptor(descriptor: K3Descriptor) {
@@ -493,8 +499,28 @@ class ImeController(
 //            }
             when (candidate) {
                 is ClipboardSuggestionCandidate -> emitClipboardItem(candidate.clipboardItem)
+                is TranslationSuggestionCandidate -> emitTranslationCandidate(candidate)
                 else -> emitCompletion(candidate)
             }
+        }
+
+        /**
+         * Swaps the auto-committed translation for an alternative the user picked from the
+         * candidates row. Runs inside the current state update scope on purpose — calling
+         * updateStateBlocking here would deadlock on the state mutex.
+         */
+        fun emitTranslationCandidate(candidate: TranslationSuggestionCandidate) {
+            val newText = candidate.text.toString()
+            val prev = translationManager.lastCommitted
+            if (prev != null && prev.isNotEmpty()) {
+                val cur = state.editor.getSurroundingText(prev.length + 5, 0).textBefore
+                if (cur.endsWith(prev)) {
+                    state.editor.deleteSurroundingText(prev.length, 0)
+                }
+            }
+            emitText(newText.asK3String())
+            translationManager.lastCommitted = newText
+        }
         }
 
         fun emitClipboardItem(item: ClipboardItem?): Boolean {

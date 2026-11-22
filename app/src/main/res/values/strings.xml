@@ -1147,4 +1147,14 @@
         <item quantity="other">{v} candidates</item>
     </plurals>
 
+    <!-- yijian AI translation -->
+    <string name="settings__translation__title">AI 翻译</string>
+    <string name="pref__translation__enabled__label">启用 AI 翻译</string>
+    <string name="pref__translation__enabled__summary">打完一句英文（句号/问号/感叹号/回车）自动翻译成中文上屏</string>
+    <string name="pref__translation__group_service__label">翻译服务</string>
+    <string name="pref__translation__api_key__label">API Key</string>
+    <string name="pref__translation__api_key__summary">DeepSeek 等 OpenAI 兼容接口的密钥，留空不翻译</string>
+    <string name="pref__translation__base_url__label">API 地址</string>
+    <string name="pref__translation__model__label">模型</string>
+
 </resources>

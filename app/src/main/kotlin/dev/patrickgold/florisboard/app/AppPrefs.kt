@@ -623,6 +623,26 @@ abstract class FlorisPreferenceModel : PreferenceModel() {
         )
     }
 
+    val translation = Translation()
+    inner class Translation {
+        val enabled = boolean(
+            key = "translation__enabled",
+            default = false,
+        )
+        val apiKey = string(
+            key = "translation__api_key",
+            default = "",
+        )
+        val baseUrl = string(
+            key = "translation__base_url",
+            default = "https://api.deepseek.com",
+        )
+        val model = string(
+            key = "translation__model",
+            default = "deepseek-chat",
+        )
+    }
+
     val suggestion = Suggestion()
     inner class Suggestion {
         val api30InlineSuggestionsEnabled = boolean(
