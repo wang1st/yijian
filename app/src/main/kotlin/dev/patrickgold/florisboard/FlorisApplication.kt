@@ -124,6 +124,7 @@ class FlorisApplication : Application() {
 
             init()
         } catch (e: Exception) {
+            android.util.Log.e("YIJIAN", "FlorisApplication.onCreate failed", e)
             CrashUtility.stageException(e)
             return
         }
