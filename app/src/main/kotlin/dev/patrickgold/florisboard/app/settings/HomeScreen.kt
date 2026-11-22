@@ -128,6 +128,16 @@ fun HomeScreen() {
             }
 
             SegmentedListColumn {
+                val count = 1
+                Preference(
+                    shapes = ListItemDefaults.segmentedShapes(0, count),
+                    icon = Icons.Outlined.Translate,
+                    title = stringRes(R.string.settings__translation__title),
+                    onClick = { navController.navigate(Routes.Settings.Translation) },
+                )
+            }
+
+            SegmentedListColumn {
                 val count = 2
                 Preference(
                     shapes = ListItemDefaults.segmentedShapes(0, count),
