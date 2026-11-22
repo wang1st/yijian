@@ -521,7 +521,6 @@ class ImeController(
             emitText(newText.asK3String())
             translationManager.lastCommitted = newText
         }
-        }
 
         fun emitClipboardItem(item: ClipboardItem?): Boolean {
             return item != null && when (item.type) {
