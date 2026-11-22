@@ -1,5 +1,5 @@
-<keyboard3 xmlns="https://schemas.unicode.org/cldr/45/keyboard3" conformsTo="45" locale="de">
-    <info author="Lars Mühlbauer for k3lp" name="German (QWERTZ)" layout="QWERTZ" indicator="DE" />
+<keyboard3 xmlns="https://schemas.unicode.org/cldr/45/keyboard3" conformsTo="45" locale="en">
+    <info author="Lars Mühlbauer for k3lp" name="English (QWERTY)" layout="QWERTY" indicator="EN" />
 
     <displays>
         <display keyId="base" display="${base_display}" />
@@ -11,6 +11,7 @@
         <display keyId="base-numeric" display="${base_display}" />
         <display keyId="symbols-numeric" display="${symbol_1_display}" />
         <display keyId="space-numeric" display="@fl:icon/space_bar" />
+        <display keyId="translate" display="译" />
     </displays>
 
     <keys>
@@ -26,6 +27,7 @@
 
         <key id="bksp" output="@k3:action/backspace" stretch="true" />
         <key id="enter" output="@k3:action/enter" width="1.6" />
+        <key id="translate" output="@fl:action/translate" width="1.3" />
         <key id="space-no-stretch" output="\u{0020}" />
         <key id="bksp-no-stretch" output="@k3:action/backspace" />
 
@@ -245,17 +247,17 @@
         <layer modifiers="none">
             <row
                 keys="caret 1 2 3 4 5 6 7 8 9 0 s-sharp acute" />
-            <row keys="q w e r t z u i o p u-umlaut plus" />
+            <row keys="q w e r t y u i o p u-umlaut plus" />
             <row keys="a s d f g h j k l o-umlaut a-umlaut hash" />
-            <row keys="open-angle y x c v b n m comma period hyphen" />
+            <row keys="open-angle z x c v b n m comma period hyphen" />
             <row keys="space" />
         </layer>
         <layer modifiers="shift">
             <row
                 keys="degree bang double-quote section dollar percent amp slash open-paren close-paren equal question grave" />
-            <row keys="Q W E R T Z U I O P U-umlaut asterisk" />
+            <row keys="Q W E R T Y U I O P U-umlaut asterisk" />
             <row keys="A S D F G H J K L O-umlaut A-umlaut apos" />
-            <row keys="close-angle Y X C V B N M semi-colon colon underscore" />
+            <row keys="close-angle Z X C V B N M semi-colon colon underscore" />
             <row keys="space" />
         </layer>
         <layer modifiers="altR">
@@ -272,17 +274,17 @@
         <import path="flex://org.florisboard.k3.foundation/layers-touch.xml" />
 
         <layer id="base">
-            <row keys="q w e r t z u i o p" />
+            <row keys="q w e r t y u i o p" />
             <row keys="a s d f g h j k l" />
-            <row keys="base-to-shift y x c v b n m bksp" />
-            <row keys="symbol-1 comma fn-key space period enter" />
+            <row keys="base-to-shift z x c v b n m bksp" />
+            <row keys="symbol-1 comma fn-key space period translate enter" />
         </layer>
 
         <layer id="shift">
-            <row keys="Q W E R T Z U I O P" />
+            <row keys="Q W E R T Y U I O P" />
             <row keys="A S D F G H J K L" />
-            <row keys="shift-to-base Y X C V B N M bksp" />
-            <row keys="symbol-1 comma fn-key space period enter" />
+            <row keys="shift-to-base Z X C V B N M bksp" />
+            <row keys="symbol-1 comma fn-key space period translate enter" />
         </layer>
 
         <layer id="symbol-1">

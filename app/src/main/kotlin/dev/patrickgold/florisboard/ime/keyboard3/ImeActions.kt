@@ -39,6 +39,8 @@ object ImeActions {
     val SelectAll = flAction("select_all")
     val Share = flAction("share")
 
+    val Translate = flAction("translate")
+
     val ShowImeWindow = flAction("show_ime_window")
     val HideImeWindow = flAction("hide_ime_window")
     val ToggleFloatingWindow = flAction("toggle_floating_window")

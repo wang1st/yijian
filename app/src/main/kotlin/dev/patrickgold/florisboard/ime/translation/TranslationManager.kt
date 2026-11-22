@@ -119,12 +119,44 @@ class TranslationManager(
     }
 
     /**
+     * Manual translation trigger (the 「译」 key): translates the current sentence fragment
+     * even if it does not end with punctuation.
+     */
+    fun translateNow() {
+        if (!prefs.translation.enabled.get()) return
+        if (inFlight) return
+        val state = imeController.snapshotState()
+        val info = state.editor.info
+        if (info.isRawInputEditor) return
+        if (info.inputAttributes.variation == InputAttributes.Variation.PASSWORD) return
+        val beforeCursor = state.editor.getSurroundingText(500, 0).textBefore
+        val (english, context) = extractTail(beforeCursor) ?: return
+        inFlight = true
+        scope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) { callApiBlocking(english, context) }
+                applyTranslation(english, null, result)
+            } catch (e: Exception) {
+                flogError { "yijian translation failed: ${e.message}" }
+            } finally {
+                inFlight = false
+            }
+        }
+    }
+
+    /**
      * Splits [beforeCursor] (which ends with a trigger punctuation) into the English sentence
      * tail and the preceding context. Returns null if the tail does not look like an
      * English sentence worth translating.
      */
     private fun extractSentence(beforeCursor: String): Pair<String, String>? {
-        val content = beforeCursor.dropLast(1)
+        return extractTail(beforeCursor.dropLast(1), requireTwoWords = true)
+    }
+
+    /**
+     * Extracts the last sentence-like tail from [content] (no trailing punctuation assumed).
+     */
+    private fun extractTail(content: String, requireTwoWords: Boolean = false): Pair<String, String>? {
         val boundaries = listOf('.', '!', '?', '\n', '。', '！', '？')
         var idx = -1
         for (b in boundaries) {
@@ -132,16 +164,21 @@ class TranslationManager(
             if (i > idx) idx = i
         }
         val tail = content.substring(idx + 1).trim()
-        if (tail.isEmpty()) return null
-        // Already Chinese? Don't re-translate.
-        if (tail.any { it.code > 0x2E7F }) return null
-        val letters = tail.count { it.isLetter() && it.code < 128 }
-        if (letters < 2) return null
-        // Require at least two words or a reasonably long single token, to avoid
-        // triggering on "Mr.", "3.", "e.g." style fragments.
-        if (!tail.any { it.isWhitespace() } && tail.length < 12) return null
+        if (!isTranslatableTail(tail, requireTwoWords)) return null
         val context = content.substring(0, idx + 1).takeLast(200)
         return tail to context
+    }
+
+    private fun isTranslatableTail(tail: String, requireTwoWords: Boolean): Boolean {
+        if (tail.isEmpty()) return false
+        // Already Chinese? Don't re-translate.
+        if (tail.any { it.code > 0x2E7F }) return false
+        val letters = tail.count { it.isLetter() && it.code < 128 }
+        if (letters < 2) return false
+        // When triggered by punctuation require at least two words or a reasonably long
+        // single token, to avoid triggering on "Mr.", "3.", "e.g." style fragments.
+        if (requireTwoWords && !tail.any { it.isWhitespace() } && tail.length < 12) return false
+        return true
     }
 
     private fun zhPunct(src: Char): String = when (src) {
@@ -151,8 +188,13 @@ class TranslationManager(
         else -> ""
     }
 
-    private suspend fun applyTranslation(english: String, trigger: Char, result: TranslationResult) {
-        val punct = zhPunct(trigger)
+    /**
+     * @param typedPunct the punctuation character the user typed that triggered the translation,
+     *  or null for a manual trigger via the 「译」 key (no punctuation is removed, but the
+     *  translation is still terminated with a Chinese full stop).
+     */
+    private suspend fun applyTranslation(english: String, typedPunct: Char?, result: TranslationResult) {
+        val punct = typedPunct?.let { zhPunct(it) } ?: "。"
         val candidates = result.translations.map { raw ->
             raw.trim().trimEnd('。', '！', '？', '.', '!', '?') + punct
         }.filter { it.isNotBlank() }
@@ -161,7 +203,7 @@ class TranslationManager(
         // InputConnection IPC must happen on the main thread
         withContext(Dispatchers.Main) {
             imeController.updateStateBlocking {
-                val committedTail = english + trigger
+                val committedTail = english + (typedPunct?.toString() ?: "")
                 val cur = state.editor.getSurroundingText(committedTail.length + 5, 0).textBefore
                 if (cur.endsWith(committedTail)) {
                     state.editor.deleteSurroundingText(committedTail.length, 0)
