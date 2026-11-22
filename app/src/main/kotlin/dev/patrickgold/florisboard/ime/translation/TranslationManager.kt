@@ -38,7 +38,8 @@ import java.net.URL
 
 /**
  * A suggestion candidate that carries a Chinese translation of what the user typed in English.
- * [text] is the translation (committed on click), [secondaryText] shows the corrected English.
+ * [text] is the translation (committed on click). The corrected English is kept for logging
+ * and the daily notes, but intentionally not shown in the candidates UI.
  */
 data class TranslationSuggestionCandidate(
     override val text: CharSequence,
@@ -51,7 +52,7 @@ data class TranslationSuggestionCandidate(
     override val sourceProvider: SuggestionProvider? = null,
 ) : SuggestionCandidate {
     override val secondaryText: CharSequence?
-        get() = correctedEnglish.ifBlank { null }
+        get() = null
 }
 
 data class TranslationResult(
@@ -83,6 +84,12 @@ class TranslationManager(
 
     /** The most recent translation auto-committed by us; used to swap it for an alternative. */
     @Volatile internal var lastCommitted: String? = null
+
+    /**
+     * English text (including any typed trailing punctuation) that is waiting in the editor to be
+     * replaced once the user picks a translation from the candidates list.
+     */
+    @Volatile internal var pendingEnglish: String? = null
 
     /**
      * Called from [ImeController]'s emitText for every committed character. Triggers a
@@ -199,36 +206,18 @@ class TranslationManager(
             raw.trim().trimEnd('。', '！', '？', '.', '!', '?') + punct
         }.filter { it.isNotBlank() }
         if (candidates.isEmpty()) return
-        var committed = false
-        // InputConnection IPC must happen on the main thread
-        withContext(Dispatchers.Main) {
-            imeController.updateStateBlocking {
-                val committedTail = english + (typedPunct?.toString() ?: "")
-                val cur = state.editor.getSurroundingText(committedTail.length + 5, 0).textBefore
-                if (cur.endsWith(committedTail)) {
-                    state.editor.deleteSurroundingText(committedTail.length, 0)
-                    val best = candidates.first()
-                    emitText(best.asK3String())
-                    lastCommitted = best
-                    committed = true
-                } else {
-                    // The user edited meanwhile; do not touch the editor.
-                    lastCommitted = null
-                }
-            }
-        }
-        // Offer alternative interpretations in the smartbar (outside the state block,
-        // suggestDirectly uses runBlocking internally).
-        if (committed && candidates.size > 1) {
-            nlpManager.suggestDirectly(candidates.mapIndexed { i, t ->
-                TranslationSuggestionCandidate(
-                    text = t,
-                    correctedEnglish = result.corrected,
-                    note = result.note,
-                    confidence = 1.0 - i * 0.1,
-                )
-            })
-        }
+        // Keep the typed English in the editor; only remember it so a candidate click can
+        // replace it with the chosen translation.
+        pendingEnglish = english + (typedPunct?.toString() ?: "")
+        // Offer the interpretations in the smartbar
+        nlpManager.suggestDirectly(candidates.mapIndexed { i, t ->
+            TranslationSuggestionCandidate(
+                text = t,
+                correctedEnglish = result.corrected,
+                note = result.note,
+                confidence = 1.0 - i * 0.1,
+            )
+        })
     }
 
     private fun callApiBlocking(english: String, context: String): TranslationResult {

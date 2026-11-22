@@ -498,27 +498,32 @@ class ImeController(
 //            }
             when (candidate) {
                 is ClipboardSuggestionCandidate -> emitClipboardItem(candidate.clipboardItem)
-                is TranslationSuggestionCandidate -> emitTranslationCandidate(candidate)
+                is TranslationSuggestionCandidate -> {
+                    emitTranslationCandidate(candidate)
+                    // Selection made; dismiss the candidate list
+                    dev.patrickgold.florisboard.FlorisApplication.getHack().nlpManager.value.clearSuggestions()
+                }
                 else -> emitCompletion(candidate)
             }
         }
 
         /**
-         * Swaps the auto-committed translation for an alternative the user picked from the
-         * candidates row. Runs inside the current state update scope on purpose — calling
-         * updateStateBlocking here would deadlock on the state mutex.
+         * Replaces the English sentence still sitting in the editor with the translation the
+         * user picked from the candidates list. Runs inside the current state update scope on
+         * purpose — calling updateStateBlocking here would deadlock on the state mutex.
          */
         fun emitTranslationCandidate(candidate: TranslationSuggestionCandidate) {
             val newText = candidate.text.toString()
-            val prev = translationManager.lastCommitted
-            if (prev != null && prev.isNotEmpty()) {
-                val cur = state.editor.getSurroundingText(prev.length + 5, 0).textBefore
-                if (cur.endsWith(prev)) {
-                    state.editor.deleteSurroundingText(prev.length, 0)
+            val pending = translationManager.pendingEnglish
+            if (pending != null && pending.isNotEmpty()) {
+                val cur = state.editor.getSurroundingText(pending.length + 5, 0).textBefore
+                if (cur.endsWith(pending)) {
+                    state.editor.deleteSurroundingText(pending.length, 0)
                 }
             }
             emitText(newText.asK3String())
-            translationManager.lastCommitted = newText
+            translationManager.pendingEnglish = null
+            translationManager.resetLastCommitted()
         }
 
         fun emitClipboardItem(item: ClipboardItem?): Boolean {

@@ -19,12 +19,22 @@ package dev.patrickgold.florisboard.ime.smartbar
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -44,6 +54,7 @@ import dev.patrickgold.florisboard.ime.keyboard3.interaction.LocalInteractionCon
 import dev.patrickgold.florisboard.ime.nlp.ClipboardSuggestionCandidate
 import dev.patrickgold.florisboard.ime.nlp.SuggestionCandidate
 import dev.patrickgold.florisboard.ime.theme.FlorisImeUi
+import dev.patrickgold.florisboard.ime.translation.TranslationSuggestionCandidate
 import dev.patrickgold.florisboard.nlpManager
 import dev.patrickgold.florisboard.subtypeManager
 import dev.patrickgold.jetpref.datastore.model.collectAsState
@@ -60,6 +71,69 @@ import kotlin.time.Duration
 
 val CandidatesRowScrollbarHeight = 2.dp
 
+/**
+ * Vertical, scrollable candidate list used for translation results: each translation occupies
+ * one full-width row so longer sentences stay readable, plus a trailing dismiss row.
+ */
+@Composable
+private fun VerticalTranslationCandidates(
+    candidates: List<SuggestionCandidate>,
+    onClick: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(232.dp)
+            .verticalScroll(rememberScrollState()),
+    ) {
+        candidates.forEachIndexed { n, candidate ->
+            if (n > 0) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp)
+                        .height(1.dp)
+                        .background(LocalContentColor.current.copy(alpha = 0.12f)),
+                )
+            }
+            SnyggRow(
+                elementName = FlorisImeUi.SmartbarCandidateWord.elementName,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onClick(n) }
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                SnyggText(
+                    elementName = "${FlorisImeUi.SmartbarCandidateWord.elementName}-text",
+                    text = candidate.text.toString(),
+                )
+            }
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp)
+                .height(1.dp)
+                .background(LocalContentColor.current.copy(alpha = 0.12f)),
+        )
+        SnyggRow(
+            elementName = FlorisImeUi.SmartbarCandidateWord.elementName,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onDismiss)
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SnyggText(
+                elementName = "${FlorisImeUi.SmartbarCandidateWord.elementName}-secondary-text",
+                text = "✕ 收起",
+            )
+        }
+    }
+}
+
 @Composable
 fun CandidatesRow(modifier: Modifier = Modifier) {
     val prefs by FlorisPreferenceStore
@@ -72,6 +146,21 @@ fun CandidatesRow(modifier: Modifier = Modifier) {
     val displayMode by prefs.suggestion.displayMode.collectAsState()
     val candidates by nlpManager.activeCandidatesFlow.collectAsState()
     val timingOptions by interactionController.activeTimingOptions.collectAsState()
+
+    // Translation candidates render as a vertical, scrollable list so each translation gets
+    // the full width for longer sentences.
+    if (candidates.isNotEmpty() && candidates.all { it is TranslationSuggestionCandidate }) {
+        VerticalTranslationCandidates(
+            candidates = candidates,
+            onClick = { n ->
+                imeController.updateStateBlocking {
+                    emitCandidate(candidates[n])
+                }
+            },
+            onDismiss = { nlpManager.clearSuggestions() },
+        )
+        return
+    }
 
     SnyggRow(
         elementName = FlorisImeUi.SmartbarCandidatesRow.elementName,
