@@ -47,6 +47,7 @@ data class TranslationSuggestionCandidate(
     override val text: CharSequence,
     val correctedEnglish: String,
     val note: String,
+    val corrections: List<CorrectionItem> = emptyList(),
     override val confidence: Double = 1.0,
     override val isEligibleForAutoCommit: Boolean = false,
     override val isEligibleForUserRemoval: Boolean = false,
@@ -57,10 +58,22 @@ data class TranslationSuggestionCandidate(
         get() = null
 }
 
+/**
+ * One concrete problem found in the user's English, with the fix and the short rule behind it.
+ * [tag] is a coarse category used for the daily/weekly report (拼写 / 语法 / 用词 / 表达).
+ */
+data class CorrectionItem(
+    val tag: String,
+    val wrong: String,
+    val right: String,
+    val why: String,
+)
+
 data class TranslationResult(
     val corrected: String,
     val translations: List<String>,
     val note: String,
+    val corrections: List<CorrectionItem> = emptyList(),
 )
 
 /**
@@ -98,6 +111,11 @@ class TranslationManager(
      * It accumulates here and is surfaced via [preeditText] in the IME panel; it only reaches
      * the editor when the user picks a translation or dismisses the panel.
      */
+    private val readTimeoutSeconds = 60
+
+    /** Records every finished sentence and produces the periodic English report. */
+    private val teacher = EnglishTeacher()
+
     private val buffer = StringBuilder()
     val preeditText = MutableStateFlow("")
 
@@ -259,17 +277,30 @@ class TranslationManager(
         }
     }
 
+    /**
+     * Turns a low-level failure into something the user can act on. The message always names the
+     * failing layer (网络 / 服务端 / 模型返回) plus the concrete reason, because "翻译失败" alone
+     * tells nobody what to do next.
+     */
     private fun humanizeError(e: Throwable): String {
         val msg = e.message.orEmpty()
+        val detail = msg.subSequence(0, minOf(msg.length, 160)).toString()
         return when {
-            msg.contains("HTTP 401") || msg.contains("HTTP 403") -> "API Key 无效"
-            msg.contains("HTTP 402") -> "API 余额不足"
-            msg.contains("HTTP 429") -> "请求太频繁，稍后再试"
+            msg.contains("HTTP 401") || msg.contains("HTTP 403") -> "Key 无效（401/403）"
+            msg.contains("HTTP 402") -> "余额不足（402）"
+            msg.contains("HTTP 429") -> "请求太频繁（429）"
+            msg.contains("HTTP 5") -> "服务端出错（${msg.substringBefore(':').trim()}）"
+            msg.contains("HTTP ") -> detail.substringBefore(':').trim() + "：接口报错"
             msg.contains("API key not configured") -> "还没填 API Key"
-            msg.contains("timed out") || e is java.net.SocketTimeoutException -> "网络超时"
-            msg.contains("Unable to resolve host") || e is java.net.UnknownHostException -> "网络不可用"
-            msg.contains("returned no translations") -> "模型没给出译文"
-            else -> "翻译失败"
+            msg.contains("timed out") || e is java.net.SocketTimeoutException ->
+                "网络超时（${readTimeoutSeconds}s）"
+            e is java.net.UnknownHostException -> "无法连接服务器，检查网络"
+            e is java.net.ConnectException -> "连接被拒绝"
+            e is javax.net.ssl.SSLException -> "SSL 握手失败（可能是代理/VPN）"
+            msg.contains("no translations") -> "模型没返回译文"
+            msg.contains("no translations") || msg.contains("JSON") -> "模型返回格式异常"
+            e is org.json.JSONException -> "模型返回格式异常"
+            else -> "${e.javaClass.simpleName}: $detail"
         }
     }
 
@@ -336,6 +367,16 @@ class TranslationManager(
             raw.trim().trimEnd('。', '！', '？', '.', '!', '?') + punct
         }.filter { it.isNotBlank() }
         if (candidates.isEmpty()) return
+        // Feed the private English teacher: every finished sentence becomes a practice record.
+        runCatching {
+            teacher.record(
+                original = english,
+                corrected = result.corrected,
+                translation = candidates.first(),
+                corrections = result.corrections,
+                note = result.note,
+            )
+        }
         if (trackPending) {
             // The English sits in the editor; remember it so a candidate click can replace it.
             pendingEnglish = english + (typedPunct?.toString() ?: "")
@@ -346,6 +387,7 @@ class TranslationManager(
                 text = t,
                 correctedEnglish = result.corrected,
                 note = result.note,
+                corrections = result.corrections,
                 confidence = 1.0 - i * 0.1,
             )
         })
@@ -357,13 +399,18 @@ class TranslationManager(
         require(apiKey.isNotBlank()) { "API key not configured" }
         val model = prefs.translation.model.get()
 
-        val systemPrompt = """你是「译键」输入法的翻译引擎。用户是英文水平有限的中国人，输入的英文常有拼写和语法错误，也可能用词不符合口语习惯。任务：
-1. 纠正他的英文（corrected）。
-2. 结合上下文把他的意思翻译成地道的中文（口语/聊天语气）。
-3. 如果这句话有不止一种合理解释，在 translations 里给出最多 3 个不同意图的译文，按贴切度排序；句意明确时只给 1 个。
-4. 用 note 用中文一句话指出他的拼写/语法/表达问题（没有则空字符串）。
+        val systemPrompt = """你是「译键」输入法的私人英语老师兼翻译引擎。用户是英文水平有限的中国人，输入的英文常有拼写、语法错误，或用词不符合英语口语习惯。任务：
+1. corrected：把他这句话改写成规范、地道的英文（保留他的原意，不要改写主题）。
+2. translations：结合上下文翻译成地道中文（口语/聊天语气）。句意有多种理解时给最多 3 个不同意图的译文，按贴切度排序；句意明确时只给 1 个。
+3. corrections：逐条列出他这句话里的问题（最多 5 条，没有就给空数组）。每条：
+   - tag：问题类型，只能是「拼写」「语法」「用词」「表达」之一
+   - wrong：他写错的部分（原样摘录）
+   - right：应该怎么写
+   - why：一句话中文说明原因或规则（尽量具体，例如「第三人称单数要加 -s」）
+4. note：如果他的句子本身没有错误但不够地道，用一句话说明更自然的说法；完全没问题就留空字符串。
 
-严格只输出 JSON，格式：{"corrected":"...","translations":["..."],"note":"..."}。不要输出任何其他内容。"""
+严格只输出 JSON，不要输出任何其他内容：
+{"corrected":"...","translations":["..."],"corrections":[{"tag":"语法","wrong":"...","right":"...","why":"..."}],"note":"..."}"""
 
         val userContent = "上下文：${context.ifBlank { "（对话刚开始）" }}\n\n要翻译的句子：$english"
 
@@ -379,8 +426,8 @@ class TranslationManager(
 
         val conn = (URL("$baseUrl/chat/completions").openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
-            connectTimeout = 15000
-            readTimeout = 45000
+            connectTimeout = 15_000
+            readTimeout = readTimeoutSeconds * 1000
             setRequestProperty("Content-Type", "application/json")
             setRequestProperty("Authorization", "Bearer $apiKey")
             doOutput = true
@@ -396,15 +443,30 @@ class TranslationManager(
                 .getJSONObject("message").getString("content")
             val jo = JSONObject(content)
             val corrected = jo.optString("corrected")
-            val translationsArr = jo.getJSONArray("translations")
+            val translationsArr = jo.optJSONArray("translations")
+                ?: error("model JSON has no translations: ${content.take(120)}")
             val translations = (0 until translationsArr.length())
-                .map { translationsArr.getString(it) }
-                .filter { it.isNotBlank() }
-            if (translations.isEmpty()) error("model returned no translations")
+                .mapNotNull { i -> translationsArr.optString(i).takeIf { it.isNotBlank() } }
+            if (translations.isEmpty()) error("model returned no translations: ${content.take(120)}")
+            val correctionsArr = jo.optJSONArray("corrections")
+            val corrections = if (correctionsArr == null) emptyList() else {
+                (0 until correctionsArr.length()).mapNotNull { i ->
+                    val item = correctionsArr.optJSONObject(i) ?: return@mapNotNull null
+                    val wrong = item.optString("wrong")
+                    if (wrong.isBlank()) return@mapNotNull null
+                    CorrectionItem(
+                        tag = item.optString("tag").ifBlank { "表达" },
+                        wrong = wrong,
+                        right = item.optString("right"),
+                        why = item.optString("why"),
+                    )
+                }
+            }
             return TranslationResult(
                 corrected = corrected,
                 translations = translations.take(3),
                 note = jo.optString("note"),
+                corrections = corrections.take(5),
             )
         } finally {
             conn.disconnect()

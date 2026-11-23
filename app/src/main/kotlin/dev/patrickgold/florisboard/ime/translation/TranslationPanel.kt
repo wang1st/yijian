@@ -79,10 +79,14 @@ fun TranslationPanel() {
         return
     }
 
+    val teacherCard = (candidates.firstOrNull() as? TranslationSuggestionCandidate)
+        ?.takeIf { it.correctedEnglish.isNotBlank() || it.corrections.isNotEmpty() || it.note.isNotBlank() }
+
     TranslationPanelContent(
         preedit = preedit,
         translating = status == TranslationManager.Status.TRANSLATING,
         error = if (status == TranslationManager.Status.ERROR) error else null,
+        teacherCard = teacherCard,
         candidates = if (isTranslationCandidates) candidates else emptyList(),
         onClick = { n ->
             imeController.updateStateBlocking {
@@ -104,6 +108,7 @@ private fun TranslationPanelContent(
     preedit: String,
     translating: Boolean,
     error: String?,
+    teacherCard: TranslationSuggestionCandidate?,
     candidates: List<SuggestionCandidate>,
     onClick: (Int) -> Unit,
     onDismiss: () -> Unit,
@@ -145,6 +150,10 @@ private fun TranslationPanelContent(
                     onSurface = onSurface,
                     onClick = { onClick(n) },
                 )
+            }
+            if (teacherCard != null) {
+                Divider(onSurface)
+                TeacherCard(teacherCard, onSurface)
             }
             Divider(onSurface)
             DismissRow(onSurface = onSurface, onClick = onDismiss)
@@ -249,4 +258,49 @@ private fun Divider(onSurface: androidx.compose.ui.graphics.Color) {
             .height(1.dp)
             .background(onSurface.copy(alpha = 0.10f)),
     )
+}
+
+/**
+ * The "private English teacher" block: what the sentence should look like and, if anything was
+ * wrong, each concrete fix with the rule behind it.
+ */
+@Composable
+private fun TeacherCard(card: TranslationSuggestionCandidate, onSurface: androidx.compose.ui.graphics.Color) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+    ) {
+        if (card.correctedEnglish.isNotBlank()) {
+            Text(
+                text = "老师版：${card.correctedEnglish}",
+                color = onSurface.copy(alpha = 0.85f),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+            )
+        }
+        card.corrections.forEach { c ->
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "· ${c.tag}：「${c.wrong}」→「${c.right}」",
+                color = onSurface.copy(alpha = 0.8f),
+                fontSize = 13.sp,
+            )
+            if (c.why.isNotBlank()) {
+                Text(
+                    text = "   ${c.why}",
+                    color = onSurface.copy(alpha = 0.55f),
+                    fontSize = 12.sp,
+                )
+            }
+        }
+        if (card.note.isNotBlank()) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "💡 ${card.note}",
+                color = onSurface.copy(alpha = 0.6f),
+                fontSize = 12.sp,
+            )
+        }
+    }
 }

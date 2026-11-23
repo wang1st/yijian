@@ -48,6 +48,11 @@ fun TranslationScreen() {
     val apiKey by prefs.translation.apiKey.collectAsState()
     val baseUrl by prefs.translation.baseUrl.collectAsState()
     val model by prefs.translation.model.collectAsState()
+    val emailTo by prefs.teacher.emailTo.collectAsState()
+    val smtpHost by prefs.teacher.smtpHost.collectAsState()
+    val smtpUser by prefs.teacher.smtpUser.collectAsState()
+    val smtpPassword by prefs.teacher.smtpPassword.collectAsState()
+    val wordThreshold by prefs.teacher.reportWordThreshold.collectAsState()
 
     FlorisScreenNg(
         title = stringRes(R.string.settings__translation__title),
@@ -86,6 +91,50 @@ fun TranslationScreen() {
                     onSave = { v -> scope.launch { prefs.translation.model.set(v) } },
                 )
             }
+
+            SegmentedListColumn(title = "英语老师 · 报告") {
+                val count = 4
+                TextEditPreference(
+                    title = "满多少词发报告",
+                    summary = "当前：每 ${wordThreshold} 词一份",
+                    value = wordThreshold.toString(),
+                    numeric = true,
+                    shapes = ListItemDefaults.segmentedShapes(0, count),
+                    onSave = { v -> scope.launch { prefs.teacher.reportWordThreshold.set(v.toIntOrNull() ?: 200) } },
+                )
+                TextEditPreference(
+                    title = "收件邮箱",
+                    summary = "报告发到这个地址",
+                    value = emailTo,
+                    shapes = ListItemDefaults.segmentedShapes(1, count),
+                    onSave = { v -> scope.launch { prefs.teacher.emailTo.set(v) } },
+                )
+                TextEditPreference(
+                    title = "SMTP 服务器",
+                    summary = "例如 smtp.qq.com / smtp.163.com",
+                    value = smtpHost,
+                    shapes = ListItemDefaults.segmentedShapes(2, count),
+                    onSave = { v -> scope.launch { prefs.teacher.smtpHost.set(v) } },
+                )
+                TextEditPreference(
+                    title = "SMTP 账号",
+                    summary = "通常是完整邮箱地址",
+                    value = smtpUser,
+                    shapes = ListItemDefaults.segmentedShapes(3, count),
+                    onSave = { v -> scope.launch { prefs.teacher.smtpUser.set(v) } },
+                )
+            }
+
+            SegmentedListColumn(title = "SMTP 密码（授权码）") {
+                TextEditPreference(
+                    title = "授权码",
+                    summary = "邮箱设置里生成的 SMTP 授权码，不是登录密码",
+                    value = smtpPassword,
+                    password = true,
+                    shapes = ListItemDefaults.segmentedShapes(0, 1),
+                    onSave = { v -> scope.launch { prefs.teacher.smtpPassword.set(v) } },
+                )
+            }
         }
     }
 }
@@ -97,6 +146,7 @@ private fun TextEditPreference(
     value: String,
     shapes: androidx.compose.material3.ListItemShapes,
     password: Boolean = false,
+    numeric: Boolean = false,
     onSave: (String) -> Unit,
 ) {
     var showDialog by remember { mutableStateOf(false) }
@@ -111,6 +161,7 @@ private fun TextEditPreference(
             title = title,
             initialValue = value,
             password = password,
+            numeric = numeric,
             onConfirm = { onSave(it); showDialog = false },
             onDismiss = { showDialog = false },
         )
@@ -122,6 +173,7 @@ private fun TextEditDialog(
     title: String,
     initialValue: String,
     password: Boolean = false,
+    numeric: Boolean = false,
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -135,6 +187,10 @@ private fun TextEditDialog(
                 onValueChange = { text = it },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    keyboardType = if (numeric) androidx.compose.ui.text.input.KeyboardType.Number
+                    else androidx.compose.ui.text.input.KeyboardType.Text,
+                ),
                 visualTransformation = if (password) {
                     androidx.compose.ui.text.input.PasswordVisualTransformation()
                 } else {

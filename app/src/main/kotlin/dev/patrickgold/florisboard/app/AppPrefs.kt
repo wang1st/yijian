@@ -643,6 +643,35 @@ abstract class FlorisPreferenceModel : PreferenceModel() {
         )
     }
 
+    val teacher = Teacher()
+    inner class Teacher {
+        /** Word count after which a report is generated and mailed. */
+        val reportWordThreshold = int(
+            key = "teacher__report_word_threshold",
+            default = 200,
+        )
+        val emailTo = string(
+            key = "teacher__email_to",
+            default = "",
+        )
+        val smtpHost = string(
+            key = "teacher__smtp_host",
+            default = "smtp.qq.com",
+        )
+        val smtpPort = int(
+            key = "teacher__smtp_port",
+            default = 465,
+        )
+        val smtpUser = string(
+            key = "teacher__smtp_user",
+            default = "",
+        )
+        val smtpPassword = string(
+            key = "teacher__smtp_password",
+            default = "",
+        )
+    }
+
     val suggestion = Suggestion()
     inner class Suggestion {
         val api30InlineSuggestionsEnabled = boolean(
