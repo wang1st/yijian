@@ -19,6 +19,7 @@ package dev.patrickgold.florisboard.ime.translation
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -80,7 +81,8 @@ fun TranslationPanel() {
 
     val isTranslationCandidates = candidates.isNotEmpty() &&
         candidates.all { it is TranslationSuggestionCandidate }
-    if (!isTranslationCandidates && preedit.isEmpty() && voiceMsg == null && !recording) {
+    val hasError = status == TranslationManager.Status.ERROR && error != null
+    if (!isTranslationCandidates && preedit.isEmpty() && voiceMsg == null && !recording && !hasError) {
         return
     }
 
@@ -153,6 +155,10 @@ private fun TranslationPanelContent(
         ) {
             if (voiceMessage != null) {
                 VoiceRow(message = voiceMessage, onSurface = onSurface)
+                Divider(onSurface)
+            }
+            if (preedit.isEmpty() && hasError) {
+                VoiceRow(message = error!!, onSurface = onSurface, isError = true)
                 Divider(onSurface)
             }
             if (preedit.isNotEmpty()) {
@@ -351,33 +357,27 @@ private fun TeacherCard(
     onSurface: androidx.compose.ui.graphics.Color,
     onSpeak: (String) -> Unit,
 ) {
-    // One line only: the most natural way to say it. Spelling/grammar breakdown lives in the
-    // emailed report so it does not eat keyboard space.
+    // The natural phrasing only — no "老师版" label, and the sentence scrolls horizontally so a
+    // long correction never gets clipped to two lines. Spelling/grammar breakdown lives in the
+    // emailed report.
     val best = card.correctedEnglish.ifBlank { card.note }
     if (best.isBlank()) return
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(start = 16.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = "老师版",
-            color = onSurface.copy(alpha = 0.45f),
-            fontSize = 11.sp,
-            maxLines = 1,
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(
             text = best,
-            color = onSurface.copy(alpha = 0.8f),
+            color = onSurface.copy(alpha = 0.85f),
             fontSize = 14.sp,
-            maxLines = 2,
-            softWrap = true,
-            modifier = Modifier.weight(1f, fill = true),
+            maxLines = 1,
+            softWrap = false,
+            modifier = Modifier
+                .weight(1f, fill = true)
+                .horizontalScroll(rememberScrollState()),
         )
-        Spacer(modifier = Modifier.width(8.dp))
-        // Read the English aloud so pronunciation can be learned by ear
         Box(
             modifier = Modifier
                 .width(TouchTarget)
@@ -392,7 +392,11 @@ private fun TeacherCard(
 
 /** Shows recording / recognition state for voice input. */
 @Composable
-private fun VoiceRow(message: String, onSurface: androidx.compose.ui.graphics.Color) {
+private fun VoiceRow(
+    message: String,
+    onSurface: androidx.compose.ui.graphics.Color,
+    isError: Boolean = false,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -402,7 +406,7 @@ private fun VoiceRow(message: String, onSurface: androidx.compose.ui.graphics.Co
     ) {
         Text(
             text = message,
-            color = onSurface.copy(alpha = 0.8f),
+            color = if (isError) androidx.compose.ui.graphics.Color(0xFFB3261E) else onSurface.copy(alpha = 0.8f),
             fontSize = 14.sp,
             softWrap = true,
             modifier = Modifier.weight(1f, fill = true),

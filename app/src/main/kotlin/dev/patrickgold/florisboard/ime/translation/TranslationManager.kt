@@ -144,6 +144,10 @@ class TranslationManager(
 
     fun hasBufferedText(): Boolean = buffer.isNotEmpty()
 
+    /** True when there is something worth showing in the panel (draft, candidates or an error). */
+    fun hasPanelContent(): Boolean =
+        buffer.isNotEmpty() || errorMessage.value != null
+
     private fun preeditActive(state: ImeState): Boolean {
         if (!prefs.translation.enabled.get()) return false
         val info = state.editor.info
@@ -317,22 +321,39 @@ class TranslationManager(
      * sentence is translated; otherwise the last sentence already in the editor is used.
      */
     fun translateNow() {
-        if (!prefs.translation.enabled.get()) return
-        if (inFlight) return
-        val state = imeController.snapshotState()
-        if (buffer.isNotEmpty()) {
-            val english = buffer.toString().trimEnd('.', '!', '?').trim()
-            if (isTranslatableTail(english, requireTwoWords = false)) {
-                translateSentence(english, state)
-            }
+        // Every early exit reports why, otherwise pressing Enter looks like a dead key.
+        if (!prefs.translation.enabled.get()) {
+            setStatus(Status.ERROR, "AI 翻译未开启")
             return
         }
+        if (inFlight) {
+            // Already translating; keep the current spinner rather than silently ignoring.
+            return
+        }
+        val state = imeController.snapshotState()
+
+        if (buffer.isNotEmpty()) {
+            val english = buffer.toString().trimEnd('.', '!', '?').trim()
+            if (!isTranslatableTail(english, requireTwoWords = false)) {
+                setStatus(Status.ERROR, "内容太短，没有可翻译的英文")
+                return
+            }
+            translateSentence(english, state)
+            return
+        }
+
         val info = state.editor.info
-        if (info.isRawInputEditor) return
-        if (info.inputAttributes.variation == InputAttributes.Variation.PASSWORD) return
+        if (info.isRawInputEditor || info.inputAttributes.variation == InputAttributes.Variation.PASSWORD) {
+            setStatus(Status.ERROR, "当前输入框不支持翻译")
+            return
+        }
         val beforeCursor = state.editor.getSurroundingText(500, 0).textBefore
-        val (english, context) = extractTail(beforeCursor) ?: return
-        translateSentence(english, state, context)
+        val extracted = extractTail(beforeCursor)
+        if (extracted == null) {
+            setStatus(Status.ERROR, "没有可翻译的英文")
+            return
+        }
+        translateSentence(extracted.first, state, extracted.second)
     }
 
     private fun translateSentence(
