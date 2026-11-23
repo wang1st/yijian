@@ -109,7 +109,8 @@ configure<ApplicationExtension> {
 
     buildTypes {
         named("debug") {
-            versionNameSuffix = "-debug+${getGitCommitHash(short = true).get()}"
+            // Keep the commit hash so an installed build can be traced, drop the "-debug" noise
+            versionNameSuffix = "+${getGitCommitHash(short = true).get()}"
 
             signingConfig = signingConfigs.getByName("yijian")
             isDebuggable = true
