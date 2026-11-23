@@ -68,28 +68,29 @@ object Mailer {
                     .createSocket(socket, host, port, true)
             }
             val io = SmtpIo(socket)
-            io.read()                                   // greeting
-            io.cmd("EHLO yijian")
+            io.expect("220")                             // server greeting
+            io.cmd("EHLO yijian", "250")
 
             if (!implicitSsl) {
-                io.cmd("STARTTLS")
+                io.cmd("STARTTLS", "220")
                 val ssl = (SSLSocketFactory.getDefault() as SSLSocketFactory)
-                    .createSocket(io.socket, host, port, true)
+                    .createSocket(io.socket, host, port, true) as SSLSocket
+                ssl.startHandshake()
                 io.replaceSocket(ssl)
-                io.cmd("EHLO yijian")
+                io.cmd("EHLO yijian", "250")
             }
 
-            io.cmd("AUTH LOGIN")
-            io.cmd(b64(user))
-            io.cmd(b64(pass))
-            io.cmd("MAIL FROM:<$user>")
-            io.cmd("RCPT TO:<$to>")
-            io.cmd("DATA")
+            io.cmd("AUTH LOGIN", "334")
+            io.cmd(b64(user), "334")
+            io.cmd(b64(pass), "235")                     // 235 = authentication successful
+            io.cmd("MAIL FROM:<$user>", "250")
+            io.cmd("RCPT TO:<$to>", "250")
+            io.cmd("DATA", "354")
 
             val text = buildMessage(user, to, subject, body)
-            io.writeRaw(text + "\r\n.\r\n")
+            io.writeRaw(escapeBody(text) + "\r\n.\r\n")
             io.expect("250")
-            runCatching { io.cmd("QUIT") }
+            runCatching { io.cmd("QUIT", "221") }
             io.close()
             lastError = null
             true
@@ -112,6 +113,13 @@ object Mailer {
             else -> m.ifBlank { e.javaClass.simpleName }
         }
     }
+
+    /**
+     * SMTP dot-stuffing: a line starting with "." would terminate the DATA block, so such lines
+     * get an extra dot. TTS/report bodies are base64 so this is mostly defensive.
+     */
+    private fun escapeBody(text: String): String =
+        text.split("\r\n").joinToString("\r\n") { if (it.startsWith(".")) "." + it else it }
 
     private fun b64(s: String): String =
         Base64.encodeToString(s.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
@@ -162,9 +170,12 @@ object Mailer {
             if (!reply.startsWith(code)) error("SMTP $reply")
         }
 
-        fun cmd(line: String): String {
+        /** Sends a command and asserts the expected reply code prefix. */
+        fun cmd(line: String, expectCode: String): String {
             writeRaw(line + "\r\n")
-            return read()
+            val reply = read()
+            if (!reply.startsWith(expectCode)) error("SMTP $reply")
+            return reply
         }
 
         fun writeRaw(s: String) {

@@ -114,7 +114,7 @@ class TranslationManager(
     private val readTimeoutSeconds = 60
 
     /** Records every finished sentence and produces the periodic English report. */
-    private val teacher = EnglishTeacher()
+    val teacher = EnglishTeacher()
 
     /** Voice input: records 16 kHz mono WAV and sends it to DeepSeek ASR. */
     val recorder = VoiceRecorder()

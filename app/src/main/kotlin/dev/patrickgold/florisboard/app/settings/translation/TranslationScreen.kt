@@ -125,6 +125,20 @@ fun TranslationScreen() {
                 )
             }
 
+            SegmentedListColumn(title = "报告") {
+                val teacher = dev.patrickgold.florisboard.FlorisApplication.getHack()
+                    .imeController.teacher
+                val pending by teacher.pendingWordCount.collectAsState()
+                val reportStatus by teacher.reportStatus.collectAsState()
+                Preference(
+                    title = "立即生成并发送报告",
+                    summary = reportStatus
+                        ?: "已积累 $pending 词（满 ${wordThreshold} 词自动发送）",
+                    shapes = ListItemDefaults.segmentedShapes(0, 1),
+                    onClick = { teacher.generateAndSendReport(force = true) },
+                )
+            }
+
             SegmentedListColumn(title = "SMTP 密码（授权码）") {
                 TextEditPreference(
                     title = "授权码",

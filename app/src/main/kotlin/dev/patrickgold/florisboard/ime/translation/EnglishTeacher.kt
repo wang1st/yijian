@@ -153,20 +153,41 @@ class EnglishTeacher {
      * only when the send succeeded (or email is disabled) — clears the accumulated entries so the
      * user is not charged twice for the same content.
      */
+    /** Result of the most recent report attempt, for the UI to show. */
+    val reportStatus = MutableStateFlow<String?>(null)
+
+    /**
+     * Builds the report from what has been recorded and emails it.
+     *
+     * @param force when true the report is sent even if the word threshold has not been reached
+     *  (used by the manual "send report now" action).
+     */
     fun generateAndSendReport(force: Boolean = false) {
         scope.launch {
             val entries = readEntries()
-            if (entries.isEmpty()) return@launch
+            if (entries.isEmpty()) {
+                reportStatus.value = "还没有练习记录"
+                return@launch
+            }
+            val words = entries.sumOf { it.wordCount }
+            if (!force && words < prefs.teacher.reportWordThreshold.get()) {
+                reportStatus.value = "已积累 $words 词，还差 ${prefs.teacher.reportWordThreshold.get() - words} 词"
+                return@launch
+            }
+            reportStatus.value = "正在生成报告…"
             val md = buildReport(entries)
             val mailed = Mailer.send(
                 context = dev.patrickgold.florisboard.FlorisApplication.getHack(),
-                subject = "译键 · 英语学习报告（${entries.size} 句 / ${entries.sumOf { it.wordCount }} 词）",
+                subject = "译键 · 英语学习报告（${entries.size} 句 / $words 词）",
                 body = md,
             )
-            val emailConfigured = prefs.teacher.emailTo.get().isNotBlank() && prefs.teacher.smtpHost.get().isNotBlank()
-            if (!emailConfigured || mailed) {
+            if (mailed) {
+                reportStatus.value = "报告已发送（${entries.size} 句 / $words 词）"
                 storeFile.writeText("")
                 pendingWordCount.value = 0
+            } else {
+                // Keep the entries: the user must be able to retry without losing practice data.
+                reportStatus.value = "发送失败：${Mailer.lastError ?: "未知原因"}"
             }
         }
     }

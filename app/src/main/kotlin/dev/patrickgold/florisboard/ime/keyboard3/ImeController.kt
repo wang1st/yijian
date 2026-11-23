@@ -125,6 +125,9 @@ class ImeController(
     /** Reads [text] aloud via DeepSeek TTS. */
     fun speak(text: String) = translationManager.speak(text)
 
+    /** The English teacher: practice records and the emailed report. */
+    val teacher get() = translationManager.teacher
+
     val activeTouchModelOptions = combine<Any, TouchModelOptions>(
         prefs.keyboard.numberRow.asFlow(),
         prefs.keyboard.fnKeyEnabled.asFlow(),
