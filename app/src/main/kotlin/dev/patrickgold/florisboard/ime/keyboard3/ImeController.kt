@@ -106,6 +106,9 @@ class ImeController(
     /** Human readable reason for the last translation failure, null when there is none. */
     val translationError get() = translationManager.errorMessage
 
+    /** Recorder shared with the translation panel so it can show recording state. */
+    val recorder get() = translationManager.recorder
+
     /** True while a voice clip is being transcribed. */
     val voiceBusy get() = translationManager.voiceBusy
 
