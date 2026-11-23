@@ -533,25 +533,27 @@ class TranslationManager(
         val trimmed = content.trim()
         if (trimmed.isEmpty()) return null
 
-        // Prefer the whole buffer unless it is long enough to be several sentences.
+        // Short enough: translate the whole thing.
         if (trimmed.length <= MAX_TRANSLATE_CHARS) {
             if (!hasTranslatableContent(trimmed, requireTwoWords)) return null
             return trimmed to ""
         }
 
-        // Long input: keep the last sentence, but never drop below the cap.
+        // Long input: always take the END of what was typed, which is what the user is working
+        // on. Snap to the nearest sentence start so a word is never cut in half, but only if
+        // that does not throw away most of the window.
+        val window = trimmed.takeLast(MAX_TRANSLATE_CHARS)
         val boundaries = listOf('.', '!', '?', '\n', '。', '！', '？', '；', ';')
-        var idx = -1
+        var snap = -1
         for (b in boundaries) {
-            val i = trimmed.lastIndexOf(b)
-            if (i > idx) idx = i
+            val i = window.indexOf(b)
+            if (i >= 0 && (snap < 0 || i < snap)) snap = i
         }
-        val tail = if (idx >= 0 && idx < trimmed.length - 1) {
-            trimmed.substring(idx + 1).trim()
+        val candidate = if (snap in 0 until (window.length * 2 / 3)) {
+            window.substring(snap + 1).trim()
         } else {
-            trimmed.takeLast(MAX_TRANSLATE_CHARS)
+            window.trim()
         }
-        val candidate = if (tail.length < MIN_TRANSLATE_CHARS) trimmed.takeLast(MAX_TRANSLATE_CHARS) else tail
         if (!hasTranslatableContent(candidate, requireTwoWords)) return null
         val context = trimmed.substring(0, (trimmed.length - candidate.length).coerceAtLeast(0)).takeLast(200)
         return candidate to context

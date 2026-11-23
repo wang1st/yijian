@@ -36,6 +36,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -227,14 +228,22 @@ private fun PreeditRow(
                     .background(accent),
             )
             Spacer(modifier = Modifier.width(10.dp))
+            // Long drafts scroll and stay pinned to the end so the newest words are always the
+            // ones in view.
+            val draftScroll = rememberScrollState()
+            LaunchedEffect(preedit) {
+                draftScroll.animateScrollTo(draftScroll.maxValue)
+            }
             Text(
                 text = preedit,
                 color = onSurface.copy(alpha = 0.88f),
                 fontFamily = FontFamily.Monospace,
                 fontSize = 15.sp,
-                maxLines = 3,
                 softWrap = true,
-                modifier = Modifier.weight(1f, fill = true),
+                modifier = Modifier
+                    .weight(1f, fill = true)
+                    .heightIn(max = 96.dp)
+                    .verticalScroll(draftScroll),
             )
             if (translating) {
                 Spacer(modifier = Modifier.width(8.dp))
