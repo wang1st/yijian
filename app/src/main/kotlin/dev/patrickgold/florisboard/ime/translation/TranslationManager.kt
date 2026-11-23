@@ -653,9 +653,9 @@ class TranslationManager(
 corrected 字段仍给出完全规范的英文（含正确大小写和标点），供参考。
 
 补充：用户也可能直接输入中文，或中英文混着输入。这种情况下：
-- translations 给出对应的**英文**说法（他要的是用地道英文表达这个意思）；
-- corrected 仍然是这句话的英文版本；
-- corrections 列出他英文部分的表达问题，纯中文部分不用挑错；中文里如果用了不地道的说法，可以在 note 里点一句。
+- 不要在 translations 里给英文，translations 始终是他输入内容的**中文**表达（中文输入就原样或略作润色）；
+- corrected 给出他用中文表达的那层意思**最地道的英文说法**；
+- corrections 只列英文部分的问题，纯中文部分不用挑错。
 
 严格只输出 JSON，不要输出任何其他内容：
 {"corrected":"...","translations":["..."],"corrections":[{"tag":"语法","wrong":"...","right":"...","why":"..."}],"note":"..."}"""
