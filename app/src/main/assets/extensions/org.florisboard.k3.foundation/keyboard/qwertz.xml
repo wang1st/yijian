@@ -27,7 +27,7 @@
 
         <key id="bksp" output="@k3:action/backspace" stretch="true" />
         <!-- Enter doubles as the translate key; Shift+Enter inserts a newline -->
-        <key id="enter" output="@k3:action/enter" width="2.2" />
+        <key id="enter" output="@k3:action/enter" width="1.6" />
         <key id="voice" output="@fl:action/voice_input" width="1.15" />
         <key id="space-no-stretch" output="\u{0020}" />
         <!-- Long-press the space bar to talk (push-to-talk voice input) -->
