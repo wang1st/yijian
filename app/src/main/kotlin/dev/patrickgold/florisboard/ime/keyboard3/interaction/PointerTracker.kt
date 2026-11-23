@@ -326,6 +326,11 @@ class PointerTracker(
             trackedPointer.repeatJob?.cancel()
             imeController.updateState {
                 val output = when {
+                    // push-to-talk: release finishes recording instead of typing a space
+                    imeController.recorder.isRecording -> {
+                        imeController.voiceStopAndTranslate()
+                        null
+                    }
                     trackedPointer.downKey == trackedMultiTapSeq.value?.touchKey -> null
                     trackedPointer.longPress.shouldShowExtendedPopup() -> {
                         trackedPointer.longPress.extendedKeys.getOrNull(trackedPointer.longPress.extendedFocusedIndex)
@@ -411,6 +416,18 @@ class PointerTracker(
     ): Job = scope.launch(Dispatchers.Default) {
         delay(longPressTimeout)
         mutateLocked {
+            // yijian: the space bar starts push-to-talk on hold; the release then stops and
+            // transcribes (see ImeController's voice_input action).
+            trackedOutputPointer.value?.let { trackedPointer ->
+                val spaceKey = trackedPointer.downKey
+                val isVoiceSpace = spaceKey.attrs.longPressKeyIds?.contains("voice") == true
+                if (isVoiceSpace) {
+                    imeController.updateState {
+                        emit(org.k3lp.lib.text.K3Descriptor("fl", "action", "voice_input"))
+                    }
+                    return@mutateLocked
+                }
+            }
             trackedMultiTapSeq.value?.let { multiTapSeq ->
                 multiTapSeq.commitJob?.cancel()
                 trackedMultiTapSeq.value = null

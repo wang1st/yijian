@@ -31,6 +31,8 @@
         <key id="translate" output="@fl:action/translate" width="1.15" />
         <key id="voice" output="@fl:action/voice_input" width="1.15" />
         <key id="space-no-stretch" output="\u{0020}" />
+        <!-- Long-press the space bar to talk (push-to-talk voice input) -->
+        <key id="voice-space" output=" " longPressKeyIds="voice" />
         <key id="bksp-no-stretch" output="@k3:action/backspace" />
 
         <!-- Numbers -->
@@ -279,14 +281,14 @@
             <row keys="q w e r t y u i o p" />
             <row keys="a s d f g h j k l" />
             <row keys="base-to-shift z x c v b n m bksp" />
-            <row keys="symbol-1 comma fn-key space period translate voice enter" />
+            <row keys="symbol-1 comma fn-key voice-space period translate enter" />
         </layer>
 
         <layer id="shift">
             <row keys="Q W E R T Y U I O P" />
             <row keys="A S D F G H J K L" />
             <row keys="shift-to-base Z X C V B N M bksp" />
-            <row keys="symbol-1 comma fn-key space period translate voice enter" />
+            <row keys="symbol-1 comma fn-key voice-space period translate enter" />
         </layer>
 
         <layer id="symbol-1">
