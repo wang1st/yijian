@@ -420,7 +420,9 @@ class PointerTracker(
             // transcribes (see ImeController's voice_input action).
             trackedOutputPointer.value?.let { trackedPointer ->
                 val spaceKey = trackedPointer.downKey
-                val isVoiceSpace = spaceKey.attrs.longPressKeyIds?.contains("voice") == true
+                // longPressKeyIds holds K3KeyId values; compare by id text to avoid type inference
+                val isVoiceSpace = spaceKey.attrs.longPressKeyIds
+                    ?.any { id -> id.value == "voice" } == true
                 if (isVoiceSpace) {
                     imeController.updateState {
                         emit(org.k3lp.lib.text.K3Descriptor("fl", "action", "voice_input"))
