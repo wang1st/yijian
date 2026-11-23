@@ -258,6 +258,52 @@ class TranslationManager(
      * tells nobody what to do next.
      */
     /**
+     * Posts the chat request. Some OpenAI-compatible providers reject unknown parameters with
+     * 400/422, so a rejected "thinking" field is retried once without it instead of failing.
+     */
+    private fun postChat(baseUrl: String, apiKey: String, body: JSONObject): String {
+        fun post(payload: JSONObject): Pair<Int, String> {
+            val conn = (URL("$baseUrl/chat/completions").openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                connectTimeout = 15_000
+                readTimeout = readTimeoutSeconds * 1000
+                setRequestProperty("Content-Type", "application/json")
+                setRequestProperty("Authorization", "Bearer $apiKey")
+                doOutput = true
+            }
+            return try {
+                conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                val code = conn.responseCode
+                val text = (if (code in 200..299) conn.inputStream else conn.errorStream)
+                    ?.use { it.readBytes() }?.decodeToString() ?: ""
+                code to text
+            } finally {
+                conn.disconnect()
+            }
+        }
+
+        var (code, text) = post(body)
+        if ((code == 400 || code == 422) && body.has("thinking")) {
+            flogError { "yijian: provider rejected 'thinking', retrying without it (${text.take(120)})" }
+            val retry = JSONObject(body.toString()).apply { remove("thinking") }
+            val second = post(retry)
+            code = second.first
+            text = second.second
+        }
+        if (code !in 200..299) error("HTTP $code: ${text.take(200)}")
+        return text
+    }
+
+    /**
+     * Output-token budget for one reply. Scaled by sentence length so the JSON answer always has
+     * room to finish (the earlier failure mode was a fixed budget being exhausted).
+     */
+    private fun tokenBudgetFor(english: String): Int {
+        val words = english.split(' ', '\t', '\n').count { it.isNotBlank() }
+        return (400 + words * 40).coerceIn(600, 3000)
+    }
+
+    /**
      * Recovers translations from a reply cut off by max_tokens. Only the "translations" array is
      * scanned, so corrections/free text can never leak in as a candidate. Complete string literals
      * are taken in order; the final partial literal is dropped.
@@ -321,10 +367,16 @@ class TranslationManager(
             e is java.net.UnknownHostException -> "无法连接服务器，检查网络"
             e is java.net.ConnectException -> "连接被拒绝"
             e is javax.net.ssl.SSLException -> "SSL 握手失败（可能是代理/VPN）"
-            msg.contains("no translations") -> "模型没返回译文"
-            msg.contains("no translations") || msg.contains("JSON") -> "模型返回格式异常"
-            e is org.json.JSONException -> "模型返回格式异常"
-            else -> "${e.javaClass.simpleName}: $detail"
+            msg.contains("模型没有给出译文") -> "模型没给出译文，重试一次"
+            msg.contains("回复被截断") -> "回复两次都被截断，稍后再试"
+            msg.contains("模型返回为空") -> "模型返回为空，稍后再试"
+            msg.contains("模型返回格式异常") -> "模型返回格式异常，稍后再试"
+            e is org.json.JSONException -> "模型返回格式异常，稍后再试"
+            // Never surface a raw exception class name to the user; keep it in the log instead.
+            else -> {
+                flogError { "yijian unclassified failure: ${e.javaClass.simpleName}: $detail" }
+                "翻译失败，请重试"
+            }
         }
     }
 
@@ -436,66 +488,85 @@ class TranslationManager(
         val messages = JSONArray()
             .put(JSONObject().put("role", "system").put("content", systemPrompt))
             .put(JSONObject().put("role", "user").put("content", userContent))
-        val body = JSONObject()
-            .put("model", model)
-            .put("messages", messages)
-            .put("temperature", 0.3)
-            .put("max_tokens", 2048)
-            .put("response_format", JSONObject().put("type", "json_object"))
 
-        val conn = (URL("$baseUrl/chat/completions").openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            connectTimeout = 15_000
-            readTimeout = readTimeoutSeconds * 1000
-            setRequestProperty("Content-Type", "application/json")
-            setRequestProperty("Authorization", "Bearer $apiKey")
-            doOutput = true
-        }
-        try {
-            conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
-            val code = conn.responseCode
-            val text = (if (code in 200..299) conn.inputStream else conn.errorStream)
-                ?.use { it.readBytes() }?.decodeToString() ?: error("empty response")
-            if (code !in 200..299) error("HTTP $code: ${text.take(200)}")
+        // Progressive budgets. If a reply still comes back truncated (finish_reason=length) or
+        // unparsable, the same request is retried with a bigger budget before giving up, so the
+        // user never sees a "model format" error that a retry would have fixed.
+        val baseBudget = tokenBudgetFor(english)
+        val budgets = listOf(baseBudget, (baseBudget * 2).coerceAtMost(6000))
+
+        var lastProblem: String? = null
+        for ((attempt, budget) in budgets.withIndex()) {
+            val body = JSONObject()
+                .put("model", model)
+                .put("messages", messages)
+                .put("temperature", if (attempt == 0) 0.3 else 0.2)
+                .put("max_tokens", budget)
+                .put("response_format", JSONObject().put("type", "json_object"))
+                // Reasoning off: on this task it doubled latency and burned 60-70% of the budget
+                // without improving the result.
+                .put("thinking", JSONObject().put("type", "disabled"))
+
+            val text = postChat(baseUrl, apiKey, body)
             val choice = JSONObject(text).getJSONArray("choices").getJSONObject(0)
-            if (choice.optString("finish_reason") == "length") {
-                error("答复被截断（max_tokens 不足），请把模型换成 deepseek-chat 或缩短句子")
+            val finishReason = choice.optString("finish_reason")
+            val content = choice.getJSONObject("message").optString("content", "")
+
+            val parsed = runCatching { parseResult(content, truncated = finishReason == "length") }
+            if (parsed.isSuccess) return parsed.getOrThrow()
+
+            lastProblem = parsed.exceptionOrNull()?.message
+            flogError {
+                "yijian: attempt ${attempt + 1}/${budgets.size} unusable " +
+                    "(finish=$finishReason, ${content.length} chars): $lastProblem"
             }
-            val content = choice.getJSONObject("message").getString("content")
-            val jo = runCatching { JSONObject(content) }.getOrElse {
-                salvageJson(content) ?: run {
-                    flogError { "yijian parse failed, raw=${content.take(300)}" }
-                    error("模型返回格式异常（JSON 不完整）")
-                }
-            }
-            val corrected = jo.optString("corrected")
-            val translationsArr = jo.optJSONArray("translations")
-                ?: error("model JSON has no translations: ${content.take(120)}")
-            val translations = (0 until translationsArr.length())
-                .mapNotNull { i -> translationsArr.optString(i).takeIf { it.isNotBlank() } }
-            if (translations.isEmpty()) error("model returned no translations: ${content.take(120)}")
-            val correctionsArr = jo.optJSONArray("corrections")
-            val corrections = if (correctionsArr == null) emptyList() else {
-                (0 until correctionsArr.length()).mapNotNull { i ->
-                    val item = correctionsArr.optJSONObject(i) ?: return@mapNotNull null
-                    val wrong = item.optString("wrong")
-                    if (wrong.isBlank()) return@mapNotNull null
-                    CorrectionItem(
-                        tag = item.optString("tag").ifBlank { "表达" },
-                        wrong = wrong,
-                        right = item.optString("right"),
-                        why = item.optString("why"),
-                    )
-                }
-            }
-            return TranslationResult(
-                corrected = corrected,
-                translations = translations.take(3),
-                note = jo.optString("note"),
-                corrections = corrections.take(5),
-            )
-        } finally {
-            conn.disconnect()
         }
+
+        // Nothing usable after retries: fall back to salvaging whatever text we can from the
+        // last reply so a short, valid translation still reaches the user.
+        error(lastProblem ?: "模型返回格式异常")
     }
+
+    /**
+     * Parses one model reply into a [TranslationResult]. Throws when the reply is unusable so the
+     * caller can retry with a larger budget.
+     */
+    private fun parseResult(content: String, truncated: Boolean): TranslationResult {
+        if (content.isBlank()) error("模型返回为空")
+
+        val jo = runCatching { JSONObject(content) }.getOrElse {
+            salvageJson(content) ?: error("模型返回格式异常")
+        }
+
+        val translationsArr = jo.optJSONArray("translations")
+        val translations = if (translationsArr == null) emptyList() else
+            (0 until translationsArr.length())
+                .mapNotNull { i -> translationsArr.optString(i).takeIf { it.isNotBlank() } }
+        if (translations.isEmpty()) {
+            error(if (truncated) "回复被截断" else "模型没有给出译文")
+        }
+
+        val correctionsArr = jo.optJSONArray("corrections")
+        val corrections = if (correctionsArr == null) emptyList() else {
+            (0 until correctionsArr.length()).mapNotNull { i ->
+                val item = correctionsArr.optJSONObject(i) ?: return@mapNotNull null
+                val wrong = item.optString("wrong")
+                if (wrong.isBlank()) return@mapNotNull null
+                CorrectionItem(
+                    tag = item.optString("tag").ifBlank { "表达" },
+                    wrong = wrong,
+                    right = item.optString("right"),
+                    why = item.optString("why"),
+                )
+            }
+        }
+
+        return TranslationResult(
+            corrected = jo.optString("corrected"),
+            translations = translations.take(3),
+            note = jo.optString("note"),
+            corrections = corrections.take(5),
+        )
+    }
+
 }

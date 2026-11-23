@@ -173,40 +173,57 @@ private fun PreeditRow(
         translating -> animateColorAsState(onSurface.copy(alpha = 0.45f), label = "translatingAccent").value
         else -> onSurface.copy(alpha = 0.25f)
     }
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = TouchTarget)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
-        // draft marker
-        Box(
+        Row(
             modifier = Modifier
-                .width(3.dp)
-                .heightIn(min = 22.dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(accent),
-        )
-        Spacer(modifier = Modifier.width(10.dp))
-        Text(
-            text = preedit,
-            color = onSurface.copy(alpha = 0.88f),
-            fontFamily = FontFamily.Monospace,
-            fontSize = 15.sp,
-            modifier = Modifier.weight(1f),
-        )
-        if (translating) {
-            Text(
-                text = "翻译中…",
-                color = onSurface.copy(alpha = 0.55f),
-                fontSize = 12.sp,
+                .fillMaxWidth()
+                .heightIn(min = TouchTarget - 20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // draft marker
+            Box(
+                modifier = Modifier
+                    .width(3.dp)
+                    .heightIn(min = 22.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(accent),
             )
-        } else if (error != null) {
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = preedit,
+                color = onSurface.copy(alpha = 0.88f),
+                fontFamily = FontFamily.Monospace,
+                fontSize = 15.sp,
+                maxLines = 3,
+                softWrap = true,
+                modifier = Modifier.weight(1f, fill = true),
+            )
+            if (translating) {
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "翻译中…",
+                    color = onSurface.copy(alpha = 0.55f),
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                )
+            }
+        }
+        // Errors go on their own full-width line: they are long, must wrap, and must never
+        // squeeze the draft text into a one-character column.
+        if (error != null && !translating) {
+            Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = error,
                 color = androidx.compose.ui.graphics.Color(0xFFB3261E),
                 fontSize = 12.sp,
+                softWrap = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 13.dp),
             )
         }
     }
