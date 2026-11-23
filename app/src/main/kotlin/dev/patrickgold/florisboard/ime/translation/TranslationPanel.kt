@@ -157,8 +157,9 @@ private fun TranslationPanelContent(
                 VoiceRow(message = voiceMessage, onSurface = onSurface)
                 Divider(onSurface)
             }
-            if (preedit.isEmpty() && hasError) {
-                VoiceRow(message = error!!, onSurface = onSurface, isError = true)
+            // Show the error on its own row when there is no draft row to attach it to
+            if (preedit.isEmpty() && error != null) {
+                VoiceRow(message = error, onSurface = onSurface, isError = true)
                 Divider(onSurface)
             }
             if (preedit.isNotEmpty()) {
