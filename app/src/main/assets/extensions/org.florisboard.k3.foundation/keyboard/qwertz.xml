@@ -6,6 +6,8 @@
         <display keyId="base-to-shift" display="@fl:icon/shift" />
         <display keyId="shift-to-base" display="@fl:icon/shift" />
         <display keyId="symbol-1" display="${symbol_1_display}" />
+        <display keyId="symbol-1-narrow" display="${symbol_1_display}" />
+        <display keyId="enter-narrow" display="@fl:icon/enter" />
         <display keyId="symbol-2" display="${symbol_2_display}" />
         <display keyId="numeric" display="${numeric_display}" />
         <display keyId="base-numeric" display="${base_display}" />
@@ -23,15 +25,18 @@
         <key id="shift-to-base" layerId="base" width="1.5" />
         <key id="numeric" layerId="numeric" />
         <key id="symbol-1" layerId="symbol-1" width="1.5" />
+        <!-- Narrower symbol/mode key used on the bottom row so the space bar can be wider -->
+        <key id="symbol-1-narrow" layerId="symbol-1" width="1.1" />
         <key id="symbol-2" layerId="symbol-2" width="1.5" />
 
         <key id="bksp" output="@k3:action/backspace" stretch="true" />
         <!-- Enter doubles as the translate key; Shift+Enter inserts a newline -->
         <key id="enter" output="@k3:action/enter" width="1.6" />
+        <key id="enter-narrow" output="@k3:action/enter" width="1.3" />
         <key id="voice" output="@fl:action/voice_input" width="1.15" />
         <key id="space-no-stretch" output="\u{0020}" />
         <!-- Long-press the space bar to talk (push-to-talk voice input) -->
-        <key id="voice-space" output=" " longPressKeyIds="voice" />
+        <key id="voice-space" output=" " longPressKeyIds="voice" stretch="true" />
         <key id="bksp-no-stretch" output="@k3:action/backspace" />
 
         <!-- Numbers -->
@@ -280,14 +285,14 @@
             <row keys="q w e r t y u i o p" />
             <row keys="a s d f g h j k l" />
             <row keys="base-to-shift z x c v b n m bksp" />
-            <row keys="symbol-1 comma fn-key voice-space period enter" />
+            <row keys="symbol-1-narrow comma fn-key voice-space period enter-narrow" />
         </layer>
 
         <layer id="shift">
             <row keys="Q W E R T Y U I O P" />
             <row keys="A S D F G H J K L" />
             <row keys="shift-to-base Z X C V B N M bksp" />
-            <row keys="symbol-1 comma fn-key voice-space period enter" />
+            <row keys="symbol-1-narrow comma fn-key voice-space period enter-narrow" />
         </layer>
 
         <layer id="symbol-1">
