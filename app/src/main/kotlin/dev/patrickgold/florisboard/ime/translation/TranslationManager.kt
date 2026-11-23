@@ -170,12 +170,8 @@ class TranslationManager(
         if (status.value == Status.ERROR) {
             setStatus(Status.IDLE)
         }
-        if (last == '.' || last == '!' || last == '?') {
-            val english = buffer.toString().trimEnd('.', '!', '?').trim()
-            if (isTranslatableTail(english, requireTwoWords = true)) {
-                translateSentence(english, scope.state)
-            }
-        }
+        // Translation is triggered only by the 「译」 key (see translateNow), never
+        // automatically on sentence-ending punctuation.
         return true
     }
 
@@ -202,33 +198,12 @@ class TranslationManager(
     }
 
     /**
-     * Called from [ImeController]'s emitText for every committed character. Triggers a
-     * translation when a sentence-ending character is typed.
+     * Legacy hook from the non-pre-edit path. Intentionally a no-op: translation is manual only,
+     * triggered by the 「译」 key.
      */
+    @Suppress("UNUSED_PARAMETER")
     fun maybeTranslateOnPunct(value: K3String) {
-        if (!prefs.translation.enabled.get()) return
-        val typed = value.toText()
-        val trigger = typed.lastOrNull() ?: return
-        if (trigger != '.' && trigger != '!' && trigger != '?' && trigger != '\n') return
-        if (inFlight) return
-        val state = imeController.snapshotState()
-        val info = state.editor.info
-        // Never touch password fields or raw input editors (games, terminals)
-        if (info.isRawInputEditor) return
-        if (info.inputAttributes.variation == InputAttributes.Variation.PASSWORD) return
-        val beforeCursor = state.editor.getSurroundingText(500, 0).textBefore
-        val (english, context) = extractSentence(beforeCursor) ?: return
-        inFlight = true
-        scope.launch {
-            try {
-                val result = withContext(Dispatchers.IO) { callApiBlocking(english, context) }
-                applyTranslation(english, trigger, result, trackPending = true)
-            } catch (e: Exception) {
-                flogError { "yijian translation failed: ${e.message}" }
-            } finally {
-                inFlight = false
-            }
-        }
+        // no-op
     }
 
     fun resetLastCommitted() {
@@ -282,6 +257,55 @@ class TranslationManager(
      * failing layer (网络 / 服务端 / 模型返回) plus the concrete reason, because "翻译失败" alone
      * tells nobody what to do next.
      */
+    /**
+     * Recovers translations from a reply cut off by max_tokens. Only the "translations" array is
+     * scanned, so corrections/free text can never leak in as a candidate. Complete string literals
+     * are taken in order; the final partial literal is dropped.
+     */
+    private fun salvageJson(content: String): JSONObject? {
+        val txKey = "\"translations\""
+        val txStart = content.indexOf(txKey)
+        if (txStart < 0) return null
+        val arrStart = content.indexOf('[', txStart)
+        if (arrStart < 0) return null
+        // Bounds of the translations array: up to the matching ']' or the start of the next key.
+        val arrEnd = content.indexOf(']', arrStart).takeIf { it > arrStart } ?: run {
+            val nextKey = content.indexOf("\",\"", arrStart).takeIf { it > arrStart } ?: content.length
+            nextKey
+        }
+        val list = JSONArray()
+        var i = arrStart + 1
+        while (i < arrEnd) {
+            val q = content.indexOf('"', i)
+            if (q < 0 || q >= arrEnd) break
+            val sb = StringBuilder()
+            var j = q + 1
+            var closed = false
+            while (j < content.length) {
+                val c = content[j]
+                if (c == '\\' && j + 1 < content.length) {
+                    sb.append(content[j + 1]); j += 2; continue
+                }
+                if (c == '"') { closed = true; break }
+                sb.append(c); j += 1
+            }
+            if (!closed) break   // truncated mid-string: drop the fragment
+            if (sb.isNotBlank()) list.put(sb.toString())
+            i = j + 1
+        }
+        if (list.length() == 0) return null
+        return JSONObject().apply {
+            put("translations", list)
+            put("corrected", regexString(content, "corrected") ?: "")
+            put("note", "")
+        }
+    }
+
+    private fun regexString(content: String, key: String): String? {
+        val m = Regex("\"$key\"\\s*:\\s*\"([^\"\\\\]*)").find(content) ?: return null
+        return m.groupValues[1]
+    }
+
     private fun humanizeError(e: Throwable): String {
         val msg = e.message.orEmpty()
         val detail = msg.subSequence(0, minOf(msg.length, 160)).toString()
@@ -341,12 +365,6 @@ class TranslationManager(
         return true
     }
 
-    private fun zhPunct(src: Char): String = when (src) {
-        '.' -> "。"
-        '!' -> "！"
-        '?' -> "？"
-        else -> ""
-    }
 
     /**
      * @param typedPunct the punctuation character the user typed that triggered the translation,
@@ -362,9 +380,10 @@ class TranslationManager(
         result: TranslationResult,
         trackPending: Boolean,
     ) {
-        val punct = typedPunct?.let { zhPunct(it) } ?: "。"
+        // Keep the model's own punctuation as-is: no ASCII-to-CJK full stop conversion on the
+        // translated text (the user asked to drop it).
         val candidates = result.translations.map { raw ->
-            raw.trim().trimEnd('。', '！', '？', '.', '!', '?') + punct
+            raw.trim()
         }.filter { it.isNotBlank() }
         if (candidates.isEmpty()) return
         // Feed the private English teacher: every finished sentence becomes a practice record.
@@ -421,7 +440,7 @@ class TranslationManager(
             .put("model", model)
             .put("messages", messages)
             .put("temperature", 0.3)
-            .put("max_tokens", 800)
+            .put("max_tokens", 2048)
             .put("response_format", JSONObject().put("type", "json_object"))
 
         val conn = (URL("$baseUrl/chat/completions").openConnection() as HttpURLConnection).apply {
@@ -438,10 +457,17 @@ class TranslationManager(
             val text = (if (code in 200..299) conn.inputStream else conn.errorStream)
                 ?.use { it.readBytes() }?.decodeToString() ?: error("empty response")
             if (code !in 200..299) error("HTTP $code: ${text.take(200)}")
-            val content = JSONObject(text)
-                .getJSONArray("choices").getJSONObject(0)
-                .getJSONObject("message").getString("content")
-            val jo = JSONObject(content)
+            val choice = JSONObject(text).getJSONArray("choices").getJSONObject(0)
+            if (choice.optString("finish_reason") == "length") {
+                error("答复被截断（max_tokens 不足），请把模型换成 deepseek-chat 或缩短句子")
+            }
+            val content = choice.getJSONObject("message").getString("content")
+            val jo = runCatching { JSONObject(content) }.getOrElse {
+                salvageJson(content) ?: run {
+                    flogError { "yijian parse failed, raw=${content.take(300)}" }
+                    error("模型返回格式异常（JSON 不完整）")
+                }
+            }
             val corrected = jo.optString("corrected")
             val translationsArr = jo.optJSONArray("translations")
                 ?: error("model JSON has no translations: ${content.take(120)}")
