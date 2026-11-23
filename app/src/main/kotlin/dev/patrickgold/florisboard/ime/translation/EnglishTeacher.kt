@@ -198,11 +198,37 @@ class EnglishTeacher {
             }
 
             reportStatus.value = "正在生成报告…"
-            val md = buildReport(entries)
+
+            // The PDF is the deliverable; the mail body is a short summary so the message is
+            // readable even before the attachment is opened.
+            val pdf = runCatching { PdfReportWriter.build(entries) }.getOrElse { e ->
+                flogError { "yijian pdf: ${e.message}" }
+                null
+            }
+            val dateTag = SimpleDateFormat("yyyyMMdd", Locale.CHINA).format(Date())
+            val attachment = pdf?.let {
+                Mailer.Attachment(
+                    fileName = "yijian-report-$dateTag.pdf",
+                    mimeType = "application/pdf",
+                    bytes = it,
+                )
+            }
+            val summary = buildString {
+                appendLine("这次练习了 ${entries.size} 句、$words 个单词。")
+                appendLine()
+                appendLine("详细报告见附件 PDF：错误分布、最需要练的 5 个点、逐句批改。")
+                if (attachment == null) {
+                    appendLine()
+                    appendLine("（PDF 生成失败，以下是纯文本版）")
+                    appendLine()
+                    append(buildReport(entries))
+                }
+            }
             val mailed = Mailer.send(
                 context = dev.patrickgold.florisboard.FlorisApplication.getHack(),
                 subject = "译键 · 英语学习报告（${entries.size} 句 / $words 词）",
-                body = md,
+                body = summary,
+                attachment = attachment,
             )
             if (mailed) {
                 recordMutex.withLock {

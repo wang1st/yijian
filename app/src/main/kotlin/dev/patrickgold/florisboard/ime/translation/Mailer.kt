@@ -46,7 +46,12 @@ object Mailer {
     var lastError: String? = null
         private set
 
-    fun send(@Suppress("UNUSED_PARAMETER") context: Context, subject: String, body: String): Boolean {
+    fun send(
+        @Suppress("UNUSED_PARAMETER") context: Context,
+        subject: String,
+        body: String,
+        attachment: Attachment? = null,
+    ): Boolean {
         val to = prefs.teacher.emailTo.get().trim()
         val host = prefs.teacher.smtpHost.get().trim()
         val port = prefs.teacher.smtpPort.get()
@@ -87,7 +92,7 @@ object Mailer {
             io.cmd("RCPT TO:<$to>", "250")
             io.cmd("DATA", "354")
 
-            val text = buildMessage(user, to, subject, body)
+            val text = buildMessage(user, to, subject, body, attachment)
             io.writeRaw(escapeBody(text) + "\r\n.\r\n")
             io.expect("250")
             runCatching { io.cmd("QUIT", "221") }
@@ -124,23 +129,63 @@ object Mailer {
     private fun b64(s: String): String =
         Base64.encodeToString(s.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
 
-    private fun buildMessage(user: String, to: String, subject: String, body: String): String {
+    /**
+     * Builds the MIME message. When [attachment] is present the body becomes multipart/mixed
+     * (plain-text summary + base64 PDF), otherwise it stays a simple base64 text message.
+     */
+    private fun buildMessage(
+        user: String,
+        to: String,
+        subject: String,
+        body: String,
+        attachment: Attachment? = null,
+    ): String {
         val date = SimpleDateFormat("EEE, d MMM yyyy HH:mm:ss Z", Locale.US).format(Date())
         val encodedSubject = "=?UTF-8?B?" + b64(subject) + "?="
-        // base64 body keeps Chinese safe regardless of line length rules
-        val encodedBody = Base64.encodeToString(body.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
-        val bodyLines = encodedBody.chunked(76).joinToString("\r\n")
+        val boundary = "----yijian" + System.nanoTime()
+
+        fun encodeText(text: String): String =
+            Base64.encodeToString(text.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+                .chunked(76).joinToString("\r\n")
+
         return buildString {
             appendLine("Date: $date")
-            appendLine("From: 译键 <$user>")
+            appendLine("From: =?UTF-8?B?${b64("译键")}?= <$user>")
             appendLine("To: <$to>")
             appendLine("Subject: $encodedSubject")
             appendLine("MIME-Version: 1.0")
-            appendLine("Content-Type: text/plain; charset=UTF-8")
-            appendLine("Content-Transfer-Encoding: base64")
-            appendLine()
-            append(bodyLines)
+            if (attachment == null) {
+                appendLine("Content-Type: text/plain; charset=UTF-8")
+                appendLine("Content-Transfer-Encoding: base64")
+                appendLine()
+                append(encodeText(body))
+            } else {
+                appendLine("Content-Type: multipart/mixed; boundary=\"$boundary\"")
+                appendLine()
+                appendLine("--$boundary")
+                appendLine("Content-Type: text/plain; charset=UTF-8")
+                appendLine("Content-Transfer-Encoding: base64")
+                appendLine()
+                appendLine(encodeText(body))
+                appendLine()
+                appendLine("--$boundary")
+                appendLine("Content-Type: ${attachment.mimeType}; name=\"${attachment.fileName}\"")
+                appendLine("Content-Transfer-Encoding: base64")
+                appendLine("Content-Disposition: attachment; filename=\"${attachment.fileName}\"")
+                appendLine()
+                appendLine(
+                    Base64.encodeToString(attachment.bytes, Base64.NO_WRAP).chunked(76).joinToString("\r\n")
+                )
+                appendLine()
+                append("--$boundary--")
+            }
         }
+    }
+
+    /** A file to attach to the report email. */
+    data class Attachment(val fileName: String, val mimeType: String, val bytes: ByteArray) {
+        override fun equals(other: Any?): Boolean = this === other
+        override fun hashCode(): Int = System.identityHashCode(this)
     }
 
     /** Tiny line-oriented SMTP transport. */
