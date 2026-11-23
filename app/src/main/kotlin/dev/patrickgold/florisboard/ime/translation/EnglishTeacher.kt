@@ -136,7 +136,8 @@ class EnglishTeacher {
         )
         // Everything below runs under one lock: concurrent records used to read the same
         // stale counter and silently drop words.
-        recordMutex.withLock {
+        scope.launch {
+          recordMutex.withLock {
             runCatching {
                 storeFile.appendText(entry.toJson().toString() + "\n")
             }.onFailure { flogError { "yijian teacher: failed to record: ${it.message}" } }
@@ -150,6 +151,7 @@ class EnglishTeacher {
             if (threshold > 0 && total >= threshold) {
                 generateAndSendReport()
             }
+          }
         }
     }
 
