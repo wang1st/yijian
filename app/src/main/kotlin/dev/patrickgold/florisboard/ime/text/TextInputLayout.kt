@@ -37,6 +37,7 @@ import dev.patrickgold.florisboard.ime.smartbar.InlineSuggestionsStyleCache
 import dev.patrickgold.florisboard.ime.smartbar.Smartbar
 import dev.patrickgold.florisboard.ime.smartbar.quickaction.QuickActionsOverflowPanel
 import dev.patrickgold.florisboard.ime.theme.FlorisImeUi
+import dev.patrickgold.florisboard.ime.translation.TranslationPanel
 import dev.patrickgold.jetpref.datastore.model.collectAsState
 import org.florisboard.lib.snygg.ui.SnyggIcon
 
@@ -63,6 +64,7 @@ fun TextInputLayout(
             .wrapContentHeight(),
     ) {
         Smartbar()
+        TranslationPanel()
         if (isActionsOverflowVisible) {
             QuickActionsOverflowPanel()
         } else {

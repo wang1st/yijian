@@ -19,22 +19,12 @@ package dev.patrickgold.florisboard.ime.smartbar
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -71,93 +61,6 @@ import kotlin.time.Duration
 
 val CandidatesRowScrollbarHeight = 2.dp
 
-/**
- * Vertical, scrollable panel used for the pre-edit buffer and translation results: each row is
- * full-width so longer sentences stay readable. The pre-edit row shows the typed English that
- * has not been sent to the target app yet; candidate rows replace it on selection; the trailing
- * row dismisses the panel (committing the raw buffer).
- */
-@Composable
-private fun VerticalTranslationCandidates(
-    preedit: String,
-    candidates: List<SuggestionCandidate>,
-    onClick: (Int) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(320.dp)
-            .verticalScroll(rememberScrollState()),
-    ) {
-        if (preedit.isNotEmpty()) {
-            SnyggRow(
-                elementName = FlorisImeUi.SmartbarCandidateWord.elementName,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                SnyggText(
-                    elementName = "${FlorisImeUi.SmartbarCandidateWord.elementName}-secondary-text",
-                    text = "EN  $preedit▏",
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 16.dp)
-                    .height(1.dp)
-                    .background(LocalContentColor.current.copy(alpha = 0.12f)),
-            )
-        }
-        candidates.forEachIndexed { n, candidate ->
-            if (n > 0) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 16.dp)
-                        .height(1.dp)
-                        .background(LocalContentColor.current.copy(alpha = 0.12f)),
-                )
-            }
-            SnyggRow(
-                elementName = FlorisImeUi.SmartbarCandidateWord.elementName,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onClick(n) }
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                SnyggText(
-                    elementName = "${FlorisImeUi.SmartbarCandidateWord.elementName}-text",
-                    text = candidate.text.toString(),
-                )
-            }
-        }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 16.dp)
-                .height(1.dp)
-                .background(LocalContentColor.current.copy(alpha = 0.12f)),
-        )
-        SnyggRow(
-            elementName = FlorisImeUi.SmartbarCandidateWord.elementName,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onDismiss)
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            SnyggText(
-                elementName = "${FlorisImeUi.SmartbarCandidateWord.elementName}-secondary-text",
-                text = if (preedit.isNotEmpty()) "✕ 收起（原文直接上屏）" else "✕ 收起",
-            )
-        }
-    }
-}
-
 @Composable
 fun CandidatesRow(modifier: Modifier = Modifier) {
     val prefs by FlorisPreferenceStore
@@ -170,28 +73,10 @@ fun CandidatesRow(modifier: Modifier = Modifier) {
     val displayMode by prefs.suggestion.displayMode.collectAsState()
     val candidates by nlpManager.activeCandidatesFlow.collectAsState()
     val timingOptions by interactionController.activeTimingOptions.collectAsState()
-    val preedit by imeController.translationPreedit.collectAsState()
 
-    // Translation candidates and the pre-edit buffer render as a vertical, scrollable panel so
-    // each translation gets the full width for longer sentences.
-    val isTranslationCandidates = candidates.isNotEmpty() && candidates.all { it is TranslationSuggestionCandidate }
-    if (isTranslationCandidates || preedit.isNotEmpty()) {
-        VerticalTranslationCandidates(
-            preedit = preedit,
-            candidates = if (isTranslationCandidates) candidates else emptyList(),
-            onClick = { n ->
-                imeController.updateStateBlocking {
-                    emitCandidate(candidates[n])
-                }
-            },
-            onDismiss = {
-                // Dismissing commits the raw buffered English (if any) and hides the list
-                imeController.updateStateBlocking {
-                    translationCommitBufferAsRaw()
-                }
-                nlpManager.clearSuggestions()
-            },
-        )
+    // Translation candidates are rendered by the dedicated TranslationPanel (between smartbar
+    // and keyboard); keep the smartbar candidates row out of the way.
+    if (candidates.isNotEmpty() && candidates.all { it is TranslationSuggestionCandidate }) {
         return
     }
 
