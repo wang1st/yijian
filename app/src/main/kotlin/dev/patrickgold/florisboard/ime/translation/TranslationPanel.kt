@@ -69,6 +69,8 @@ fun TranslationPanel() {
     val nlpManager by context.nlpManager()
 
     val preedit by imeController.translationPreedit.collectAsState()
+    val status by imeController.translationStatus.collectAsState()
+    val error by imeController.translationError.collectAsState()
     val candidates by nlpManager.activeCandidatesFlow.collectAsState()
 
     val isTranslationCandidates = candidates.isNotEmpty() &&
@@ -79,7 +81,8 @@ fun TranslationPanel() {
 
     TranslationPanelContent(
         preedit = preedit,
-        translating = preedit.isNotEmpty() && !isTranslationCandidates,
+        translating = status == TranslationManager.Status.TRANSLATING,
+        error = if (status == TranslationManager.Status.ERROR) error else null,
         candidates = if (isTranslationCandidates) candidates else emptyList(),
         onClick = { n ->
             imeController.updateStateBlocking {
@@ -100,6 +103,7 @@ fun TranslationPanel() {
 private fun TranslationPanelContent(
     preedit: String,
     translating: Boolean,
+    error: String?,
     candidates: List<SuggestionCandidate>,
     onClick: (Int) -> Unit,
     onDismiss: () -> Unit,
@@ -124,7 +128,12 @@ private fun TranslationPanelContent(
                 .verticalScroll(rememberScrollState()),
         ) {
             if (preedit.isNotEmpty()) {
-                PreeditRow(preedit = preedit, translating = translating, onSurface = onSurface)
+                PreeditRow(
+                    preedit = preedit,
+                    translating = translating,
+                    error = error,
+                    onSurface = onSurface,
+                )
                 Divider(onSurface)
             }
             candidates.forEachIndexed { n, candidate ->
@@ -144,11 +153,16 @@ private fun TranslationPanelContent(
 }
 
 @Composable
-private fun PreeditRow(preedit: String, translating: Boolean, onSurface: androidx.compose.ui.graphics.Color) {
-    val accent = if (translating) {
-        animateColorAsState(onSurface.copy(alpha = 0.45f), label = "translatingAccent").value
-    } else {
-        onSurface.copy(alpha = 0.25f)
+private fun PreeditRow(
+    preedit: String,
+    translating: Boolean,
+    error: String?,
+    onSurface: androidx.compose.ui.graphics.Color,
+) {
+    val accent = when {
+        error != null -> androidx.compose.ui.graphics.Color(0xFFB3261E)
+        translating -> animateColorAsState(onSurface.copy(alpha = 0.45f), label = "translatingAccent").value
+        else -> onSurface.copy(alpha = 0.25f)
     }
     Row(
         modifier = Modifier
@@ -177,6 +191,12 @@ private fun PreeditRow(preedit: String, translating: Boolean, onSurface: android
             Text(
                 text = "翻译中…",
                 color = onSurface.copy(alpha = 0.55f),
+                fontSize = 12.sp,
+            )
+        } else if (error != null) {
+            Text(
+                text = error,
+                color = androidx.compose.ui.graphics.Color(0xFFB3261E),
                 fontSize = 12.sp,
             )
         }

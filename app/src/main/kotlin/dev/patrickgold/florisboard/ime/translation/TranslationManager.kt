@@ -101,6 +101,20 @@ class TranslationManager(
     private val buffer = StringBuilder()
     val preeditText = MutableStateFlow("")
 
+    /**
+     * Translation lifecycle state for the panel. [Translating] means an API call is in flight;
+     * [Idle] with a non-empty buffer means the text simply has not been translated yet. The
+     * last error is surfaced to the user instead of silently spinning.
+     */
+    enum class Status { IDLE, TRANSLATING, ERROR }
+    val status = MutableStateFlow(Status.IDLE)
+    val errorMessage = MutableStateFlow<String?>(null)
+
+    private fun setStatus(newStatus: Status, error: String? = null) {
+        errorMessage.value = error
+        status.value = newStatus
+    }
+
     fun hasBufferedText(): Boolean = buffer.isNotEmpty()
 
     private fun preeditActive(state: ImeState): Boolean {
@@ -114,6 +128,7 @@ class TranslationManager(
     fun clearBuffer() {
         buffer.setLength(0)
         preeditText.value = ""
+        setStatus(Status.IDLE)
     }
 
     /** Commits the buffered English as-is into the target editor (user dismissed the panel). */
@@ -134,6 +149,9 @@ class TranslationManager(
         val last = s.lastOrNull()
         buffer.append(s)
         preeditText.value = buffer.toString()
+        if (status.value == Status.ERROR) {
+            setStatus(Status.IDLE)
+        }
         if (last == '.' || last == '!' || last == '?') {
             val english = buffer.toString().trimEnd('.', '!', '?').trim()
             if (isTranslatableTail(english, requireTwoWords = true)) {
@@ -226,15 +244,32 @@ class TranslationManager(
         if (inFlight) return
         val context = givenContext ?: state.editor.getSurroundingText(300, 0).textBefore.takeLast(200)
         inFlight = true
+        setStatus(Status.TRANSLATING)
         scope.launch {
             try {
                 val result = withContext(Dispatchers.IO) { callApiBlocking(english, context) }
                 applyTranslation(english, null, result, trackPending = givenContext != null)
+                setStatus(Status.IDLE)
             } catch (e: Exception) {
                 flogError { "yijian translation failed: ${e.message}" }
+                setStatus(Status.ERROR, humanizeError(e))
             } finally {
                 inFlight = false
             }
+        }
+    }
+
+    private fun humanizeError(e: Throwable): String {
+        val msg = e.message.orEmpty()
+        return when {
+            msg.contains("HTTP 401") || msg.contains("HTTP 403") -> "API Key 无效"
+            msg.contains("HTTP 402") -> "API 余额不足"
+            msg.contains("HTTP 429") -> "请求太频繁，稍后再试"
+            msg.contains("API key not configured") -> "还没填 API Key"
+            msg.contains("timed out") || e is java.net.SocketTimeoutException -> "网络超时"
+            msg.contains("Unable to resolve host") || e is java.net.UnknownHostException -> "网络不可用"
+            msg.contains("returned no translations") -> "模型没给出译文"
+            else -> "翻译失败"
         }
     }
 

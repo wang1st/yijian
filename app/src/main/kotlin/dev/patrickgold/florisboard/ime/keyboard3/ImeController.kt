@@ -100,6 +100,12 @@ class ImeController(
     /** Current pre-edit buffer content (typed English that has not been sent to the app yet). */
     val translationPreedit get() = translationManager.preeditText
 
+    /** Translation API lifecycle: IDLE / TRANSLATING / ERROR. */
+    val translationStatus get() = translationManager.status
+
+    /** Human readable reason for the last translation failure, null when there is none. */
+    val translationError get() = translationManager.errorMessage
+
     val activeTouchModelOptions = combine<Any, TouchModelOptions>(
         prefs.keyboard.numberRow.asFlow(),
         prefs.keyboard.fnKeyEnabled.asFlow(),
