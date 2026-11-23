@@ -81,7 +81,7 @@ fun TranslationPanel() {
     }
 
     val teacherCard = (candidates.firstOrNull() as? TranslationSuggestionCandidate)
-        ?.takeIf { it.correctedEnglish.isNotBlank() || it.corrections.isNotEmpty() || it.note.isNotBlank() }
+        ?.takeIf { it.correctedEnglish.isNotBlank() || it.note.isNotBlank() }
 
     TranslationPanelContent(
         preedit = preedit,
@@ -329,41 +329,30 @@ private fun Divider(onSurface: androidx.compose.ui.graphics.Color) {
  */
 @Composable
 private fun TeacherCard(card: TranslationSuggestionCandidate, onSurface: androidx.compose.ui.graphics.Color) {
-    Column(
+    // One line only: the most natural way to say it. Spelling/grammar breakdown lives in the
+    // emailed report so it does not eat keyboard space.
+    val best = card.correctedEnglish.ifBlank { card.note }
+    if (best.isBlank()) return
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (card.correctedEnglish.isNotBlank()) {
-            Text(
-                text = "老师版：${card.correctedEnglish}",
-                color = onSurface.copy(alpha = 0.85f),
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-            )
-        }
-        card.corrections.forEach { c ->
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = "· ${c.tag}：「${c.wrong}」→「${c.right}」",
-                color = onSurface.copy(alpha = 0.8f),
-                fontSize = 13.sp,
-            )
-            if (c.why.isNotBlank()) {
-                Text(
-                    text = "   ${c.why}",
-                    color = onSurface.copy(alpha = 0.55f),
-                    fontSize = 12.sp,
-                )
-            }
-        }
-        if (card.note.isNotBlank()) {
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = "💡 ${card.note}",
-                color = onSurface.copy(alpha = 0.6f),
-                fontSize = 12.sp,
-            )
-        }
+        Text(
+            text = "老师版",
+            color = onSurface.copy(alpha = 0.45f),
+            fontSize = 11.sp,
+            maxLines = 1,
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = best,
+            color = onSurface.copy(alpha = 0.8f),
+            fontSize = 14.sp,
+            maxLines = 2,
+            softWrap = true,
+            modifier = Modifier.weight(1f, fill = true),
+        )
     }
 }
