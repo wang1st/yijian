@@ -357,6 +357,16 @@ class ImeController(
             translationManager.commitBufferAsRaw(this)
         }
 
+        /**
+         * Discards the buffered English and any pending translation: nothing is committed to the
+         * target editor.
+         */
+        fun translationClearAll() {
+            translationManager.clearBuffer()
+            translationManager.pendingEnglish = null
+            translationManager.resetLastCommitted()
+        }
+
         override fun emitDescriptor(descriptor: K3Descriptor) {
             val windowController = FlorisImeService.windowControllerOrNull()
             when (descriptor) {

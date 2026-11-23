@@ -19,6 +19,7 @@ package dev.patrickgold.florisboard.ime.translation
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -100,6 +101,13 @@ fun TranslationPanel() {
             }
             nlpManager.clearSuggestions()
         },
+        onClear = {
+            // Discard everything typed and everything translated: nothing is sent, nothing chosen
+            imeController.updateStateBlocking {
+                translationClearAll()
+            }
+            nlpManager.clearSuggestions()
+        },
     )
 }
 
@@ -112,6 +120,7 @@ private fun TranslationPanelContent(
     candidates: List<SuggestionCandidate>,
     onClick: (Int) -> Unit,
     onDismiss: () -> Unit,
+    onClear: () -> Unit,
 ) {
     val onSurface = LocalContentColor.current
     Column(
@@ -156,7 +165,7 @@ private fun TranslationPanelContent(
                 TeacherCard(teacherCard, onSurface)
             }
             Divider(onSurface)
-            DismissRow(onSurface = onSurface, onClick = onDismiss)
+            ActionRows(onSurface = onSurface, onDismiss = onDismiss, onClear = onClear)
         }
     }
 }
@@ -249,19 +258,56 @@ private fun CandidateRow(text: String, onSurface: androidx.compose.ui.graphics.C
 }
 
 @Composable
-private fun DismissRow(onSurface: androidx.compose.ui.graphics.Color, onClick: () -> Unit) {
+private fun ActionRows(
+    onSurface: androidx.compose.ui.graphics.Color,
+    onDismiss: () -> Unit,
+    onClear: () -> Unit,
+) {
+    Row(modifier = Modifier.fillMaxWidth()) {
+        ActionButton(
+            text = "放弃翻译，发送原文",
+            onSurface = onSurface,
+            modifier = Modifier.weight(1f),
+            onClick = onDismiss,
+        )
+        Box(
+            modifier = Modifier
+                .width(1.dp)
+                .heightIn(min = TouchTarget - 16.dp)
+                .align(Alignment.CenterVertically)
+                .background(onSurface.copy(alpha = 0.10f)),
+        )
+        ActionButton(
+            text = "✕ 清除",
+            onSurface = onSurface,
+            danger = true,
+            modifier = Modifier.weight(1f),
+            onClick = onClear,
+        )
+    }
+}
+
+@Composable
+private fun ActionButton(
+    text: String,
+    onSurface: androidx.compose.ui.graphics.Color,
+    modifier: Modifier = Modifier,
+    danger: Boolean = false,
+    onClick: () -> Unit,
+) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
+        modifier = modifier
             .heightIn(min = TouchTarget)
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
     ) {
         Text(
-            text = "放弃翻译，发送原文",
-            color = onSurface.copy(alpha = 0.5f),
+            text = text,
+            color = onSurface.copy(alpha = if (danger) 0.62f else 0.5f),
             fontSize = 13.sp,
+            maxLines = 1,
         )
     }
 }

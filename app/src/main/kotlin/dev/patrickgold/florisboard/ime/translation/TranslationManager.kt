@@ -480,6 +480,14 @@ class TranslationManager(
    - why：一句话中文说明原因或规则（尽量具体，例如「第三人称单数要加 -s」）
 4. note：如果他的句子本身没有错误但不够地道，用一句话说明更自然的说法；完全没问题就留空字符串。
 
+重要：这是键盘输入场景，用户常为图快而用小写开头、省略句号或逗号、用缩写（如 im / u / dont / wanna）。
+这些**不算错误**，不要为以下情况生成 corrections：
+- 首字母没有大写（句首 i、专有名词、句号后的大写等）
+- 缺少或多余空格、句尾缺标点、逗号句号使用不规范
+- 聊天常用缩写与口语简写（im、u、dont、cant、wanna、gonna、thx 等）
+只有在拼写确实拼错（如 recieve）、语法结构错误（时态/主谓一致/缺冠词）、用词不当或表达不地道时才指出来。
+corrected 字段仍给出完全规范的英文（含正确大小写和标点），供参考。
+
 严格只输出 JSON，不要输出任何其他内容：
 {"corrected":"...","translations":["..."],"corrections":[{"tag":"语法","wrong":"...","right":"...","why":"..."}],"note":"..."}"""
 
@@ -528,6 +536,19 @@ class TranslationManager(
     }
 
     /**
+     * True when a correction differs from the original only in letter case or punctuation/spacing
+     * — shorthand typing that must not be reported as a mistake.
+     */
+    private fun isOnlyCasingOrPunctuation(c: CorrectionItem): Boolean {
+        fun normalize(text: String): String =
+            text.filter { it.isLetterOrDigit() }.lowercase()
+        val wrong = normalize(c.wrong)
+        val right = normalize(c.right)
+        if (wrong.isEmpty()) return true
+        return wrong == right
+    }
+
+    /**
      * Parses one model reply into a [TranslationResult]. Throws when the reply is unusable so the
      * caller can retry with a larger budget.
      */
@@ -558,7 +579,7 @@ class TranslationManager(
                     right = item.optString("right"),
                     why = item.optString("why"),
                 )
-            }
+            }.filterNot { isOnlyCasingOrPunctuation(it) }
         }
 
         return TranslationResult(
