@@ -22,6 +22,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -98,6 +100,9 @@ class EnglishTeacher {
     private val prefs by FlorisPreferenceStore
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    /** Guards the practice file and the word counter against concurrent updates. */
+    private val recordMutex = Mutex()
+
     /** How many words have been collected since the last report. */
     val pendingWordCount = MutableStateFlow(0)
 
@@ -107,7 +112,9 @@ class EnglishTeacher {
 
     init {
         scope.launch {
-            pendingWordCount.value = readEntries().sumOf { it.wordCount }
+            recordMutex.withLock {
+                pendingWordCount.value = readEntries().sumOf { it.wordCount }
+            }
         }
     }
 
@@ -127,12 +134,18 @@ class EnglishTeacher {
             corrections = corrections,
             note = note,
         )
-        scope.launch {
+        // Everything below runs under one lock: concurrent records used to read the same
+        // stale counter and silently drop words.
+        recordMutex.withLock {
             runCatching {
                 storeFile.appendText(entry.toJson().toString() + "\n")
             }.onFailure { flogError { "yijian teacher: failed to record: ${it.message}" } }
-            val total = pendingWordCount.value + entry.wordCount
+
+            // Always derive the total from what is actually on disk, so the counter can never
+            // drift from the stored records.
+            val total = readEntries().sumOf { it.wordCount }
             pendingWordCount.value = total
+
             val threshold = prefs.teacher.reportWordThreshold.get()
             if (threshold > 0 && total >= threshold) {
                 generateAndSendReport()
@@ -164,16 +177,24 @@ class EnglishTeacher {
      */
     fun generateAndSendReport(force: Boolean = false) {
         scope.launch {
-            val entries = readEntries()
+            // Snapshot under the lock; the SMTP round trip happens outside it so recording a new
+            // sentence never waits on the network.
+            var entries: List<PracticeEntry> = emptyList()
+            var words = 0
+            recordMutex.withLock {
+                entries = readEntries()
+                words = entries.sumOf { it.wordCount }
+            }
             if (entries.isEmpty()) {
                 reportStatus.value = "还没有练习记录"
                 return@launch
             }
-            val words = entries.sumOf { it.wordCount }
             if (!force && words < prefs.teacher.reportWordThreshold.get()) {
-                reportStatus.value = "已积累 $words 词，还差 ${prefs.teacher.reportWordThreshold.get() - words} 词"
+                val need = prefs.teacher.reportWordThreshold.get() - words
+                reportStatus.value = "已积累 $words 词，还差 $need 词"
                 return@launch
             }
+
             reportStatus.value = "正在生成报告…"
             val md = buildReport(entries)
             val mailed = Mailer.send(
@@ -182,9 +203,18 @@ class EnglishTeacher {
                 body = md,
             )
             if (mailed) {
+                recordMutex.withLock {
+                    // Only drop what was actually reported, so sentences typed during the send
+                    // are not lost.
+                    val reported = entries.map { it.timestamp }.toSet()
+                    val remaining = readEntries().filterNot { it.timestamp in reported }
+                    storeFile.writeText("")
+                    if (remaining.isNotEmpty()) {
+                        remaining.forEach { storeFile.appendText(it.toJson().toString() + "\n") }
+                    }
+                    pendingWordCount.value = remaining.sumOf { it.wordCount }
+                }
                 reportStatus.value = "报告已发送（${entries.size} 句 / $words 词）"
-                storeFile.writeText("")
-                pendingWordCount.value = 0
             } else {
                 // Keep the entries: the user must be able to retry without losing practice data.
                 reportStatus.value = "发送失败：${Mailer.lastError ?: "未知原因"}"
