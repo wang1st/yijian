@@ -72,11 +72,14 @@ import kotlin.time.Duration
 val CandidatesRowScrollbarHeight = 2.dp
 
 /**
- * Vertical, scrollable candidate list used for translation results: each translation occupies
- * one full-width row so longer sentences stay readable, plus a trailing dismiss row.
+ * Vertical, scrollable panel used for the pre-edit buffer and translation results: each row is
+ * full-width so longer sentences stay readable. The pre-edit row shows the typed English that
+ * has not been sent to the target app yet; candidate rows replace it on selection; the trailing
+ * row dismisses the panel (committing the raw buffer).
  */
 @Composable
 private fun VerticalTranslationCandidates(
+    preedit: String,
     candidates: List<SuggestionCandidate>,
     onClick: (Int) -> Unit,
     onDismiss: () -> Unit,
@@ -84,9 +87,30 @@ private fun VerticalTranslationCandidates(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .height(232.dp)
+            .height(320.dp)
             .verticalScroll(rememberScrollState()),
     ) {
+        if (preedit.isNotEmpty()) {
+            SnyggRow(
+                elementName = FlorisImeUi.SmartbarCandidateWord.elementName,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                SnyggText(
+                    elementName = "${FlorisImeUi.SmartbarCandidateWord.elementName}-secondary-text",
+                    text = "EN  $preedit▏",
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp)
+                    .height(1.dp)
+                    .background(LocalContentColor.current.copy(alpha = 0.12f)),
+            )
+        }
         candidates.forEachIndexed { n, candidate ->
             if (n > 0) {
                 Box(
@@ -128,7 +152,7 @@ private fun VerticalTranslationCandidates(
         ) {
             SnyggText(
                 elementName = "${FlorisImeUi.SmartbarCandidateWord.elementName}-secondary-text",
-                text = "✕ 收起",
+                text = if (preedit.isNotEmpty()) "✕ 收起（原文直接上屏）" else "✕ 收起",
             )
         }
     }
@@ -146,18 +170,27 @@ fun CandidatesRow(modifier: Modifier = Modifier) {
     val displayMode by prefs.suggestion.displayMode.collectAsState()
     val candidates by nlpManager.activeCandidatesFlow.collectAsState()
     val timingOptions by interactionController.activeTimingOptions.collectAsState()
+    val preedit by imeController.translationPreedit.collectAsState()
 
-    // Translation candidates render as a vertical, scrollable list so each translation gets
-    // the full width for longer sentences.
-    if (candidates.isNotEmpty() && candidates.all { it is TranslationSuggestionCandidate }) {
+    // Translation candidates and the pre-edit buffer render as a vertical, scrollable panel so
+    // each translation gets the full width for longer sentences.
+    val isTranslationCandidates = candidates.isNotEmpty() && candidates.all { it is TranslationSuggestionCandidate }
+    if (isTranslationCandidates || preedit.isNotEmpty()) {
         VerticalTranslationCandidates(
-            candidates = candidates,
+            preedit = preedit,
+            candidates = if (isTranslationCandidates) candidates else emptyList(),
             onClick = { n ->
                 imeController.updateStateBlocking {
                     emitCandidate(candidates[n])
                 }
             },
-            onDismiss = { nlpManager.clearSuggestions() },
+            onDismiss = {
+                // Dismissing commits the raw buffered English (if any) and hides the list
+                imeController.updateStateBlocking {
+                    translationCommitBufferAsRaw()
+                }
+                nlpManager.clearSuggestions()
+            },
         )
         return
     }

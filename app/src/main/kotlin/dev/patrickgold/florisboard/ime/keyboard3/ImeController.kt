@@ -97,6 +97,9 @@ class ImeController(
     private var emitInterceptor = AtomicReference<EmitInterceptor?>(null)
     private val translationManager = TranslationManager(this)
 
+    /** Current pre-edit buffer content (typed English that has not been sent to the app yet). */
+    val translationPreedit get() = translationManager.preeditText
+
     val activeTouchModelOptions = combine<Any, TouchModelOptions>(
         prefs.keyboard.numberRow.asFlow(),
         prefs.keyboard.fnKeyEnabled.asFlow(),
@@ -203,6 +206,7 @@ class ImeController(
             ic: WeakReference<InputConnection>,
             info: FlorisEditorInfo,
         ) {
+            translationManager.clearBuffer()
             val newTouchLayerId: K3LayerId
             val keyVariation: KeyVariation
             when (info.inputAttributes.type) {
@@ -320,10 +324,31 @@ class ImeController(
         }
 
         override fun emitText(value: K3String) {
+            if (translationManager.interceptEmitText(value, this)) {
+                return
+            }
             super.emitText(value)
             expectedContentQueue.push(state.content)
             reevaluateInputShiftState()
             translationManager.maybeTranslateOnPunct(value)
+        }
+
+        /**
+         * Commits text straight into the target editor, bypassing the yijian pre-edit buffer.
+         * Used for the translation results themselves and for raw-buffer flushes.
+         */
+        fun emitTextDirect(value: K3String) {
+            super.emitText(value)
+            expectedContentQueue.push(state.content)
+            reevaluateInputShiftState()
+        }
+
+        /**
+         * Commits the raw buffered English into the editor (panel dismissed without picking a
+         * translation). No-op when the buffer is empty.
+         */
+        fun translationCommitBufferAsRaw() {
+            translationManager.commitBufferAsRaw(this)
         }
 
         override fun emitDescriptor(descriptor: K3Descriptor) {
@@ -433,11 +458,15 @@ class ImeController(
         }
 
         override fun emitBackspace() {
+            if (translationManager.interceptBackspace(this)) {
+                return
+            }
             super.emitBackspace()
             expectedContentQueue.push(state.content)
         }
 
         override fun emitEnter() {
+            translationManager.flushBufferOnEnter(this)
             val info = state.editor.info
             val isShiftPressed = false // TODO inputEventDispatcher.isPressed(KeyCode.SHIFT)
             if (info.imeOptions.flagNoEnterAction || info.inputAttributes.flagTextMultiLine && isShiftPressed) {
@@ -521,8 +550,9 @@ class ImeController(
                     state.editor.deleteSurroundingText(pending.length, 0)
                 }
             }
-            emitText(newText.asK3String())
+            emitTextDirect(newText.asK3String())
             translationManager.pendingEnglish = null
+            translationManager.clearBuffer()
             translationManager.resetLastCommitted()
         }
 
@@ -643,6 +673,7 @@ class ImeController(
         }
 
         fun handleFinishInputView() {
+            translationManager.clearBuffer()
             resetContent()
             state = state.copy(editor = ImeEditor.Disconnected)
             expectedContentQueue.clear()

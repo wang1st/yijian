@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import dev.patrickgold.florisboard.app.FlorisPreferenceStore
 import dev.patrickgold.florisboard.ime.editor.InputAttributes
 import dev.patrickgold.florisboard.ime.keyboard3.ImeController
+import dev.patrickgold.florisboard.ime.keyboard3.ImeState
 import dev.patrickgold.florisboard.ime.nlp.NlpManager
 import dev.patrickgold.florisboard.ime.nlp.SuggestionCandidate
 import dev.patrickgold.florisboard.ime.nlp.SuggestionProvider
@@ -27,6 +28,7 @@ import dev.patrickgold.florisboard.lib.devtools.flogError
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -92,6 +94,78 @@ class TranslationManager(
     @Volatile internal var pendingEnglish: String? = null
 
     /**
+     * Pre-edit buffer: while translation is enabled, typed text does NOT go to the target app.
+     * It accumulates here and is surfaced via [preeditText] in the IME panel; it only reaches
+     * the editor when the user picks a translation or dismisses the panel.
+     */
+    private val buffer = StringBuilder()
+    val preeditText = MutableStateFlow("")
+
+    fun hasBufferedText(): Boolean = buffer.isNotEmpty()
+
+    private fun preeditActive(state: ImeState): Boolean {
+        if (!prefs.translation.enabled.get()) return false
+        val info = state.editor.info
+        if (info.isRawInputEditor) return false
+        if (info.inputAttributes.variation == InputAttributes.Variation.PASSWORD) return false
+        return true
+    }
+
+    fun clearBuffer() {
+        buffer.setLength(0)
+        preeditText.value = ""
+    }
+
+    /** Commits the buffered English as-is into the target editor (user dismissed the panel). */
+    fun commitBufferAsRaw(scope: ImeController.UpdateImeStateScope) {
+        if (buffer.isEmpty()) return
+        val text = buffer.toString()
+        clearBuffer()
+        scope.emitTextDirect(text.asK3String())
+    }
+
+    /**
+     * Intercepts a text emit while pre-edit is active. Returns true if the emit was consumed
+     * into the buffer (sentence-ending punctuation additionally triggers a translation).
+     */
+    fun interceptEmitText(value: K3String, scope: ImeController.UpdateImeStateScope): Boolean {
+        if (!preeditActive(scope.state)) return false
+        val s = value.toText()
+        val last = s.lastOrNull()
+        buffer.append(s)
+        preeditText.value = buffer.toString()
+        if (last == '.' || last == '!' || last == '?') {
+            val english = buffer.toString().trimEnd('.', '!', '?').trim()
+            if (isTranslatableTail(english, requireTwoWords = true)) {
+                translateSentence(english, scope.state)
+            }
+        }
+        return true
+    }
+
+    /** Intercepts backspace while pre-edit is active. Returns true if consumed. */
+    fun interceptBackspace(scope: ImeController.UpdateImeStateScope): Boolean {
+        if (!preeditActive(scope.state)) return false
+        if (buffer.isEmpty()) return false
+        // delete last UTF-16 code point (handle surrogate pairs)
+        var end = buffer.length - 1
+        if (end > 0 && buffer[end].isLowSurrogate()) end--
+        buffer.setLength(end)
+        preeditText.value = buffer.toString()
+        return true
+    }
+
+    /**
+     * Called before a normal Enter handling: flushes the buffer so the raw English is in the
+     * editor and Enter behaves as usual.
+     */
+    fun flushBufferOnEnter(scope: ImeController.UpdateImeStateScope) {
+        if (preeditActive(scope.state)) {
+            commitBufferAsRaw(scope)
+        }
+    }
+
+    /**
      * Called from [ImeController]'s emitText for every committed character. Triggers a
      * translation when a sentence-ending character is typed.
      */
@@ -112,7 +186,7 @@ class TranslationManager(
         scope.launch {
             try {
                 val result = withContext(Dispatchers.IO) { callApiBlocking(english, context) }
-                applyTranslation(english, trigger, result)
+                applyTranslation(english, trigger, result, trackPending = true)
             } catch (e: Exception) {
                 flogError { "yijian translation failed: ${e.message}" }
             } finally {
@@ -126,23 +200,36 @@ class TranslationManager(
     }
 
     /**
-     * Manual translation trigger (the 「译」 key): translates the current sentence fragment
-     * even if it does not end with punctuation.
+     * Manual translation trigger (the 「译」 key). With a non-empty pre-edit buffer the buffered
+     * sentence is translated; otherwise the last sentence already in the editor is used.
      */
     fun translateNow() {
         if (!prefs.translation.enabled.get()) return
         if (inFlight) return
         val state = imeController.snapshotState()
+        if (buffer.isNotEmpty()) {
+            val english = buffer.toString().trimEnd('.', '!', '?').trim()
+            if (isTranslatableTail(english, requireTwoWords = false)) {
+                translateSentence(english, state)
+            }
+            return
+        }
         val info = state.editor.info
         if (info.isRawInputEditor) return
         if (info.inputAttributes.variation == InputAttributes.Variation.PASSWORD) return
         val beforeCursor = state.editor.getSurroundingText(500, 0).textBefore
         val (english, context) = extractTail(beforeCursor) ?: return
+        translateSentence(english, state, context)
+    }
+
+    private fun translateSentence(english: String, state: ImeState, givenContext: String? = null) {
+        if (inFlight) return
+        val context = givenContext ?: state.editor.getSurroundingText(300, 0).textBefore.takeLast(200)
         inFlight = true
         scope.launch {
             try {
                 val result = withContext(Dispatchers.IO) { callApiBlocking(english, context) }
-                applyTranslation(english, null, result)
+                applyTranslation(english, null, result, trackPending = givenContext != null)
             } catch (e: Exception) {
                 flogError { "yijian translation failed: ${e.message}" }
             } finally {
@@ -199,16 +286,25 @@ class TranslationManager(
      * @param typedPunct the punctuation character the user typed that triggered the translation,
      *  or null for a manual trigger via the 「译」 key (no punctuation is removed, but the
      *  translation is still terminated with a Chinese full stop).
+     * @param trackPending if true, remember the English as [pendingEnglish] so a candidate click
+     *  replaces it in the editor. False for the pre-edit buffer flow, where the English never
+     *  reached the editor.
      */
-    private suspend fun applyTranslation(english: String, typedPunct: Char?, result: TranslationResult) {
+    private fun applyTranslation(
+        english: String,
+        typedPunct: Char?,
+        result: TranslationResult,
+        trackPending: Boolean,
+    ) {
         val punct = typedPunct?.let { zhPunct(it) } ?: "。"
         val candidates = result.translations.map { raw ->
             raw.trim().trimEnd('。', '！', '？', '.', '!', '?') + punct
         }.filter { it.isNotBlank() }
         if (candidates.isEmpty()) return
-        // Keep the typed English in the editor; only remember it so a candidate click can
-        // replace it with the chosen translation.
-        pendingEnglish = english + (typedPunct?.toString() ?: "")
+        if (trackPending) {
+            // The English sits in the editor; remember it so a candidate click can replace it.
+            pendingEnglish = english + (typedPunct?.toString() ?: "")
+        }
         // Offer the interpretations in the smartbar
         nlpManager.suggestDirectly(candidates.mapIndexed { i, t ->
             TranslationSuggestionCandidate(
