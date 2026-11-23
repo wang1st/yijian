@@ -128,7 +128,10 @@ fun TranslationScreen() {
             SegmentedListColumn(title = "报告") {
                 val teacher = dev.patrickgold.florisboard.FlorisApplication.getHack()
                     .imeController.teacher
-                val pending by teacher.pendingWordCount.collectAsState()
+                val pending by androidx.compose.runtime.collectAsState(
+                    teacher.pendingWordCount,
+                    initial = teacher.pendingWordCount.value,
+                )
                 // reportStatus is a plain StateFlow, not a jetpref PreferenceData
                 val reportStatus by androidx.compose.runtime.collectAsState(
                     teacher.reportStatus,
