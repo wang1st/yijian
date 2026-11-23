@@ -116,6 +116,15 @@ class TranslationManager(
     /** Records every finished sentence and produces the periodic English report. */
     private val teacher = EnglishTeacher()
 
+    /** Voice input: records 16 kHz mono WAV and sends it to DeepSeek ASR. */
+    val recorder = VoiceRecorder()
+
+    /** True while a recorded clip is being transcribed. */
+    val voiceBusy = MutableStateFlow(false)
+
+    /** Last voice-specific message (recognised text or a voice error). */
+    val voiceStatus = MutableStateFlow<String?>(null)
+
     private val buffer = StringBuilder()
     val preeditText = MutableStateFlow("")
 
@@ -210,6 +219,99 @@ class TranslationManager(
         lastCommitted = null
     }
 
+    // ---- Voice input ----------------------------------------------------------------
+
+    /** Starts recording. Returns false (with a message) when the mic is unavailable. */
+    fun startVoice(): Boolean {
+        if (recorder.isRecording) return true
+        if (!prefs.translation.enabled.get()) {
+            voiceStatus.value = "先在设置里打开 AI 翻译"
+            return false
+        }
+        if (!recorder.canRecord()) {
+            voiceStatus.value = "麦克风不可用"
+            return false
+        }
+        voiceStatus.value = "正在录音…松开结束"
+        scope.launch {
+            val ok = recorder.start()
+            if (!ok) {
+                voiceStatus.value = recorder.lastError ?: "录音启动失败"
+            }
+        }
+        return true
+    }
+
+    /** Stops recording, transcribes what was said and runs it through the translation flow. */
+    fun stopVoiceAndTranslate() {
+        if (!recorder.isRecording) return
+        scope.launch {
+            voiceBusy.value = true
+            voiceStatus.value = "识别中…"
+            try {
+                val pcm = recorder.stop()
+                if (pcm == null) {
+                    voiceStatus.value = "没听到声音"
+                    return@launch
+                }
+                val wav = recorder.toWav(pcm)
+                val client = SpeechClient(prefs.translation.baseUrl.get(), prefs.translation.apiKey.get())
+                val result = withContext(Dispatchers.IO) { client.transcribe(wav) }
+                val said = result.text.trim()
+                if (said.isEmpty()) {
+                    voiceStatus.value = "没听清，再说一次"
+                    return@launch
+                }
+                // Show what was heard, then translate it like typed English.
+                buffer.setLength(0)
+                buffer.append(said)
+                preeditText.value = said
+                voiceStatus.value = null
+                val state = imeController.snapshotState()
+                val context = state.editor.getSurroundingText(300, 0).textBefore.takeLast(200)
+                translateSentence(said, state, context, voiceMode = true)
+            } catch (e: SpeechException) {
+                voiceStatus.value = e.message
+                setStatus(Status.ERROR, e.message ?: "语音识别失败")
+            } catch (e: Exception) {
+                flogError { "yijian voice: ${e.message}" }
+                voiceStatus.value = "语音识别失败"
+                setStatus(Status.ERROR, "语音识别失败")
+            } finally {
+                voiceBusy.value = false
+                recorder.reset()
+            }
+        }
+    }
+
+    /** Cancels recording without sending anything to the model. */
+    fun cancelVoice() {
+        scope.launch {
+            recorder.stop()
+            recorder.reset()
+            voiceStatus.value = null
+        }
+    }
+
+    /**
+     * Synthesises [text] with DeepSeek TTS and plays it through the device speakers.
+     */
+    fun speak(text: String) {
+        if (text.isBlank()) return
+        scope.launch {
+            voiceStatus.value = "合成语音…"
+            try {
+                val client = SpeechClient(prefs.translation.baseUrl.get(), prefs.translation.apiKey.get())
+                val wav = withContext(Dispatchers.IO) { client.synthesize(text) }
+                voiceStatus.value = null
+                withContext(Dispatchers.Main) { AudioPlayer.play(wav) }
+            } catch (e: Exception) {
+                flogError { "yijian tts: ${e.message}" }
+                voiceStatus.value = (e as? SpeechException)?.message ?: "语音合成失败"
+            }
+        }
+    }
+
     /**
      * Manual translation trigger (the 「译」 key). With a non-empty pre-edit buffer the buffered
      * sentence is translated; otherwise the last sentence already in the editor is used.
@@ -233,14 +335,19 @@ class TranslationManager(
         translateSentence(english, state, context)
     }
 
-    private fun translateSentence(english: String, state: ImeState, givenContext: String? = null) {
+    private fun translateSentence(
+        english: String,
+        state: ImeState,
+        givenContext: String? = null,
+        voiceMode: Boolean = false,
+    ) {
         if (inFlight) return
         val context = givenContext ?: state.editor.getSurroundingText(300, 0).textBefore.takeLast(200)
         inFlight = true
         setStatus(Status.TRANSLATING)
         scope.launch {
             try {
-                val result = withContext(Dispatchers.IO) { callApiBlocking(english, context) }
+                val result = withContext(Dispatchers.IO) { callApiBlocking(english, context, voiceMode) }
                 applyTranslation(english, null, result, trackPending = givenContext != null)
                 setStatus(Status.IDLE)
             } catch (e: Exception) {
@@ -464,7 +571,7 @@ class TranslationManager(
         })
     }
 
-    private fun callApiBlocking(english: String, context: String): TranslationResult {
+    private fun callApiBlocking(english: String, context: String, voiceMode: Boolean = false): TranslationResult {
         val baseUrl = prefs.translation.baseUrl.get().trimEnd('/')
         val apiKey = prefs.translation.apiKey.get()
         require(apiKey.isNotBlank()) { "API key not configured" }
@@ -491,7 +598,18 @@ corrected 字段仍给出完全规范的英文（含正确大小写和标点）�
 严格只输出 JSON，不要输出任何其他内容：
 {"corrected":"...","translations":["..."],"corrections":[{"tag":"语法","wrong":"...","right":"...","why":"..."}],"note":"..."}"""
 
-        val userContent = "上下文：${context.ifBlank { "（对话刚开始）" }}\n\n要翻译的句子：$english"
+        val userContent = buildString {
+            append("上下文：${context.ifBlank { "（对话刚开始）" }}")
+            append("\n\n要翻译的句子：$english")
+            if (voiceMode) {
+                append(
+                    "\n\n【语音学习模式】用户是直接说出来的，可能不确定英文该怎么说。" +
+                        "请在 corrected 里给出他真正想表达的那句话最地道的英文说法（不要只是逐字直译），" +
+                        "并在 corrections 里点出关键表达/搭配问题（例如该用 take the bus 而不是 by bus、该用 look forward to 而不是 wait for）。" +
+                        "why 字段请写清楚这条用法的规则或场景。"
+                )
+            }
+        }
 
         val messages = JSONArray()
             .put(JSONObject().put("role", "system").put("content", systemPrompt))

@@ -20,6 +20,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import dev.patrickgold.florisboard.lib.devtools.flogInfo
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Column
@@ -118,6 +123,10 @@ class FlorisAppActivity : ComponentActivity() {
             }
         }
 
+        // yijian: voice input needs the microphone. The IME service cannot show a permission
+        // dialog, so it is requested here the first time the app is opened.
+        requestMicPermissionIfNeeded()
+
         // We defer the setContent call until the datastore model is loaded, until then the splash screen stays drawn
         val isModelLoaded = AtomicBoolean(false)
         appContext.preferenceStoreLoaded.collectIn(lifecycleScope) { loaded ->
@@ -143,6 +152,19 @@ class FlorisAppActivity : ComponentActivity() {
             onNewIntent(intent)
         }
     }
+
+    private fun requestMicPermissionIfNeeded() {
+        val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+        if (granted) return
+        micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+    }
+
+    private val micPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            flogInfo { "yijian: RECORD_AUDIO granted=$granted" }
+        }
+
 
     override fun onPause() {
         super.onPause()

@@ -72,11 +72,15 @@ fun TranslationPanel() {
     val preedit by imeController.translationPreedit.collectAsState()
     val status by imeController.translationStatus.collectAsState()
     val error by imeController.translationError.collectAsState()
+    val voiceBusy by imeController.voiceBusy.collectAsState()
+    val voiceMsg by imeController.voiceStatus.collectAsState()
+    val recorder = imeController.recorder
+    val recording = recorder.isRecording
     val candidates by nlpManager.activeCandidatesFlow.collectAsState()
 
     val isTranslationCandidates = candidates.isNotEmpty() &&
         candidates.all { it is TranslationSuggestionCandidate }
-    if (!isTranslationCandidates && preedit.isEmpty()) {
+    if (!isTranslationCandidates && preedit.isEmpty() && voiceMsg == null && !recording) {
         return
     }
 
@@ -88,6 +92,9 @@ fun TranslationPanel() {
         translating = status == TranslationManager.Status.TRANSLATING,
         error = if (status == TranslationManager.Status.ERROR) error else null,
         teacherCard = teacherCard,
+        voiceMessage = if (recording) "🎤 正在录音…（松开结束）" else voiceMsg,
+        speakingText = candidates.firstOrNull()?.text?.toString().orEmpty(),
+        onSpeak = { text -> imeController.speak(text) },
         candidates = if (isTranslationCandidates) candidates else emptyList(),
         onClick = { n ->
             imeController.updateStateBlocking {
@@ -117,6 +124,9 @@ private fun TranslationPanelContent(
     translating: Boolean,
     error: String?,
     teacherCard: TranslationSuggestionCandidate?,
+    voiceMessage: String?,
+    speakingText: String,
+    onSpeak: (String) -> Unit,
     candidates: List<SuggestionCandidate>,
     onClick: (Int) -> Unit,
     onDismiss: () -> Unit,
@@ -141,6 +151,10 @@ private fun TranslationPanelContent(
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState()),
         ) {
+            if (voiceMessage != null) {
+                VoiceRow(message = voiceMessage, onSurface = onSurface)
+                Divider(onSurface)
+            }
             if (preedit.isNotEmpty()) {
                 PreeditRow(
                     preedit = preedit,
@@ -162,7 +176,11 @@ private fun TranslationPanelContent(
             }
             if (teacherCard != null) {
                 Divider(onSurface)
-                TeacherCard(teacherCard, onSurface)
+                TeacherCard(
+                    card = teacherCard,
+                    onSurface = onSurface,
+                    onSpeak = onSpeak,
+                )
             }
             Divider(onSurface)
             ActionRows(onSurface = onSurface, onDismiss = onDismiss, onClear = onClear)
@@ -328,7 +346,11 @@ private fun Divider(onSurface: androidx.compose.ui.graphics.Color) {
  * wrong, each concrete fix with the rule behind it.
  */
 @Composable
-private fun TeacherCard(card: TranslationSuggestionCandidate, onSurface: androidx.compose.ui.graphics.Color) {
+private fun TeacherCard(
+    card: TranslationSuggestionCandidate,
+    onSurface: androidx.compose.ui.graphics.Color,
+    onSpeak: (String) -> Unit,
+) {
     // One line only: the most natural way to say it. Spelling/grammar breakdown lives in the
     // emailed report so it does not eat keyboard space.
     val best = card.correctedEnglish.ifBlank { card.note }
@@ -351,6 +373,37 @@ private fun TeacherCard(card: TranslationSuggestionCandidate, onSurface: android
             color = onSurface.copy(alpha = 0.8f),
             fontSize = 14.sp,
             maxLines = 2,
+            softWrap = true,
+            modifier = Modifier.weight(1f, fill = true),
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        // Read the English aloud so pronunciation can be learned by ear
+        Box(
+            modifier = Modifier
+                .width(TouchTarget)
+                .height(TouchTarget)
+                .clickable { onSpeak(best) },
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(text = "🔊", fontSize = 16.sp)
+        }
+    }
+}
+
+/** Shows recording / recognition state for voice input. */
+@Composable
+private fun VoiceRow(message: String, onSurface: androidx.compose.ui.graphics.Color) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = TouchTarget)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = message,
+            color = onSurface.copy(alpha = 0.8f),
+            fontSize = 14.sp,
             softWrap = true,
             modifier = Modifier.weight(1f, fill = true),
         )

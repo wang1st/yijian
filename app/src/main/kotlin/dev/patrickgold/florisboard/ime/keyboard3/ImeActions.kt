@@ -40,6 +40,7 @@ object ImeActions {
     val Share = flAction("share")
 
     val Translate = flAction("translate")
+    val VoiceInput = flAction("voice_input")
 
     val ShowImeWindow = flAction("show_ime_window")
     val HideImeWindow = flAction("hide_ime_window")

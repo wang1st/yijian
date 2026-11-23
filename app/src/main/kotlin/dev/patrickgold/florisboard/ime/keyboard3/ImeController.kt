@@ -106,6 +106,22 @@ class ImeController(
     /** Human readable reason for the last translation failure, null when there is none. */
     val translationError get() = translationManager.errorMessage
 
+    /** True while a voice clip is being transcribed. */
+    val voiceBusy get() = translationManager.voiceBusy
+
+    /** Last voice status message (recording / recognised text / voice error). */
+    val voiceStatus get() = translationManager.voiceStatus
+
+    /** Records and transcribes speech; results go through the normal translation flow. */
+    fun voiceStart(): Boolean = translationManager.startVoice()
+
+    fun voiceStopAndTranslate() = translationManager.stopVoiceAndTranslate()
+
+    fun voiceCancel() = translationManager.cancelVoice()
+
+    /** Reads [text] aloud via DeepSeek TTS. */
+    fun speak(text: String) = translationManager.speak(text)
+
     val activeTouchModelOptions = combine<Any, TouchModelOptions>(
         prefs.keyboard.numberRow.asFlow(),
         prefs.keyboard.fnKeyEnabled.asFlow(),
@@ -418,6 +434,15 @@ class ImeController(
                 }
                 ImeActions.SelectAll -> state.editor.performSelectAll()
                 ImeActions.Translate -> translationManager.translateNow()
+                // The touch model emits once on press (start recording) and once on release
+                // (stop + transcribe), which gives push-to-talk for free.
+                ImeActions.VoiceInput -> {
+                    if (translationManager.recorder.isRecording) {
+                        translationManager.stopVoiceAndTranslate()
+                    } else {
+                        translationManager.startVoice()
+                    }
+                }
                 ImeActions.Share -> {
                     val text = state.content.surroundingText.textSelected
                     if (text.isNotEmpty()) {
