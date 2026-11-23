@@ -129,7 +129,11 @@ fun TranslationScreen() {
                 val teacher = dev.patrickgold.florisboard.FlorisApplication.getHack()
                     .imeController.teacher
                 val pending by teacher.pendingWordCount.collectAsState()
-                val reportStatus by teacher.reportStatus.collectAsState()
+                // reportStatus is a plain StateFlow, not a jetpref PreferenceData
+                val reportStatus by androidx.compose.runtime.collectAsState(
+                    teacher.reportStatus,
+                    initial = teacher.reportStatus.value,
+                )
                 Preference(
                     title = "立即生成并发送报告",
                     summary = reportStatus
