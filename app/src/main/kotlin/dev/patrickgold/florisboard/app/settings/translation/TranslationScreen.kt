@@ -37,6 +37,7 @@ import dev.patrickgold.florisboard.app.components.ScrollableScreenColumn
 import dev.patrickgold.florisboard.app.components.SegmentedListColumn
 import dev.patrickgold.florisboard.app.components.FlorisScreenNg
 import dev.patrickgold.jetpref.datastore.model.collectAsState
+import androidx.compose.runtime.collectAsState as composeCollectAsState
 import dev.patrickgold.jetpref.datastore.ui.Preference
 import dev.patrickgold.jetpref.datastore.ui.SwitchPreference
 import org.florisboard.lib.compose.stringRes
@@ -128,15 +129,9 @@ fun TranslationScreen() {
             SegmentedListColumn(title = "报告") {
                 val teacher = dev.patrickgold.florisboard.FlorisApplication.getHack()
                     .imeController.teacher
-                val pending by androidx.compose.runtime.collectAsState(
-                    teacher.pendingWordCount,
-                    initial = teacher.pendingWordCount.value,
-                )
-                // reportStatus is a plain StateFlow, not a jetpref PreferenceData
-                val reportStatus by androidx.compose.runtime.collectAsState(
-                    teacher.reportStatus,
-                    initial = teacher.reportStatus.value,
-                )
+                // These are plain StateFlows, not jetpref PreferenceData
+                val pending by teacher.pendingWordCount.composeCollectAsState()
+                val reportStatus by teacher.reportStatus.composeCollectAsState()
                 Preference(
                     title = "立即生成并发送报告",
                     summary = reportStatus
