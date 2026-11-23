@@ -16,35 +16,51 @@
 
 package dev.patrickgold.florisboard.ime.translation
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.patrickgold.florisboard.ime.keyboard3.LocalImeController
 import dev.patrickgold.florisboard.ime.nlp.SuggestionCandidate
-import dev.patrickgold.florisboard.ime.theme.FlorisImeUi
 import dev.patrickgold.florisboard.nlpManager
-import org.florisboard.lib.snygg.ui.SnyggColumn
-import org.florisboard.lib.snygg.ui.SnyggRow
-import org.florisboard.lib.snygg.ui.SnyggText
+
+/** Minimum Android touch target. */
+private val TouchTarget = 48.dp
 
 /**
- * yijian translation panel, rendered between the smartbar (toolbar) and the keyboard. It shows
- * the pre-edit buffer (typed English that has not reached the app yet) plus the translation
- * candidates. Height adapts to content so all rows are visible without relying on scrolling.
+ * yijian translation panel, rendered as its own region between the smartbar (toolbar) and the
+ * keyboard. It shows the pre-edit buffer (typed English that has not reached the app yet) plus
+ * the translation candidates.
+ *
+ * Design notes (from the UI audit):
+ * - own background surface so it reads as a separate layer from toolbar and keyboard
+ * - every selectable row is at least 48dp tall
+ * - the pre-edit row is styled as a draft (monospace, accent bar) and shows a translating state
+ * - dismiss is a quiet, separate row so it cannot be confused with a candidate
  */
 @Composable
 fun TranslationPanel() {
@@ -63,6 +79,7 @@ fun TranslationPanel() {
 
     TranslationPanelContent(
         preedit = preedit,
+        translating = preedit.isNotEmpty() && !isTranslationCandidates,
         candidates = if (isTranslationCandidates) candidates else emptyList(),
         onClick = { n ->
             imeController.updateStateBlocking {
@@ -82,74 +99,134 @@ fun TranslationPanel() {
 @Composable
 private fun TranslationPanelContent(
     preedit: String,
+    translating: Boolean,
     candidates: List<SuggestionCandidate>,
     onClick: (Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    SnyggColumn(
-        elementName = FlorisImeUi.SmartbarCandidatesRow.elementName,
+    val onSurface = LocalContentColor.current
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(max = 440.dp)
-            .verticalScroll(rememberScrollState()),
+            .background(onSurface.copy(alpha = 0.06f))
+            .heightIn(max = 440.dp),
     ) {
-        if (preedit.isNotEmpty()) {
-            SnyggRow(
-                elementName = FlorisImeUi.SmartbarCandidateWord.elementName,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                SnyggText(
-                    elementName = "${FlorisImeUi.SmartbarCandidateWord.elementName}-secondary-text",
-                    text = "EN  $preedit▏",
-                )
-            }
-            PanelDivider()
-        }
-        candidates.forEachIndexed { n, candidate ->
-            if (n > 0) {
-                PanelDivider()
-            }
-            SnyggRow(
-                elementName = FlorisImeUi.SmartbarCandidateWord.elementName,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onClick(n) }
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                SnyggText(
-                    elementName = "${FlorisImeUi.SmartbarCandidateWord.elementName}-text",
-                    text = candidate.text.toString(),
-                )
-            }
-        }
-        PanelDivider()
-        SnyggRow(
-            elementName = FlorisImeUi.SmartbarCandidateWord.elementName,
+        // 3dp accent bar marking this region as the translation surface
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onDismiss)
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
+                .height(3.dp)
+                .background(onSurface.copy(alpha = 0.18f)),
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
         ) {
-            SnyggText(
-                elementName = "${FlorisImeUi.SmartbarCandidateWord.elementName}-secondary-text",
-                text = if (preedit.isNotEmpty()) "✕ 收起（原文直接上屏）" else "✕ 收起",
+            if (preedit.isNotEmpty()) {
+                PreeditRow(preedit = preedit, translating = translating, onSurface = onSurface)
+                Divider(onSurface)
+            }
+            candidates.forEachIndexed { n, candidate ->
+                if (n > 0) {
+                    Divider(onSurface)
+                }
+                CandidateRow(
+                    text = candidate.text.toString(),
+                    onSurface = onSurface,
+                    onClick = { onClick(n) },
+                )
+            }
+            Divider(onSurface)
+            DismissRow(onSurface = onSurface, onClick = onDismiss)
+        }
+    }
+}
+
+@Composable
+private fun PreeditRow(preedit: String, translating: Boolean, onSurface: androidx.compose.ui.graphics.Color) {
+    val accent = if (translating) {
+        animateColorAsState(onSurface.copy(alpha = 0.45f), label = "translatingAccent").value
+    } else {
+        onSurface.copy(alpha = 0.25f)
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = TouchTarget)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // draft marker
+        Box(
+            modifier = Modifier
+                .width(3.dp)
+                .heightIn(min = 22.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(accent),
+        )
+        Spacer(modifier = Modifier.width(10.dp))
+        Text(
+            text = preedit,
+            color = onSurface.copy(alpha = 0.88f),
+            fontFamily = FontFamily.Monospace,
+            fontSize = 15.sp,
+            modifier = Modifier.weight(1f),
+        )
+        if (translating) {
+            Text(
+                text = "翻译中…",
+                color = onSurface.copy(alpha = 0.55f),
+                fontSize = 12.sp,
             )
         }
     }
 }
 
 @Composable
-private fun PanelDivider() {
+private fun CandidateRow(text: String, onSurface: androidx.compose.ui.graphics.Color, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = TouchTarget)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = text,
+            color = onSurface,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Medium,
+        )
+    }
+}
+
+@Composable
+private fun DismissRow(onSurface: androidx.compose.ui.graphics.Color, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = TouchTarget)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = "放弃翻译，发送原文",
+            color = onSurface.copy(alpha = 0.5f),
+            fontSize = 13.sp,
+        )
+    }
+}
+
+@Composable
+private fun Divider(onSurface: androidx.compose.ui.graphics.Color) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 16.dp)
+            .padding(horizontal = 16.dp)
             .height(1.dp)
-            .background(LocalContentColor.current.copy(alpha = 0.12f)),
+            .background(onSurface.copy(alpha = 0.10f)),
     )
 }
