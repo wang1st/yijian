@@ -358,10 +358,7 @@ private fun computeTouchKeyboard(
                         isSuitableForExtendedPopup = popups.isNotEmpty(),
                         extendedPopupKeys = popups,
                         // The space bar's voice long-press is discoverable by design; hint it
-                        longPressKeyHint = when {
-                            !options.longPressKeyHintEnabled && key.id.value != "voice-space" -> null
-                            else -> popups.firstOrNull()?.display
-                        },
+                        longPressKeyHint = if (options.longPressKeyHintEnabled) popups.firstOrNull()?.display else null,
                         longPressKeyHintPlacement = options.longPressKeyHintPlacement,
                         shouldOverrideDisplayWithMultiTapKeys =
                             model.displays.byKeyId[key.id] == null && multiTapKeys.isNotEmpty(),
