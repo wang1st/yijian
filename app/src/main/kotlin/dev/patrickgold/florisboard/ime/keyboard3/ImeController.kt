@@ -510,10 +510,21 @@ class ImeController(
         }
 
         override fun emitEnter() {
-            translationManager.flushBufferOnEnter(this)
             val info = state.editor.info
-            val isShiftPressed = false // TODO inputEventDispatcher.isPressed(KeyCode.SHIFT)
-            if (info.imeOptions.flagNoEnterAction || info.inputAttributes.flagTextMultiLine && isShiftPressed) {
+            // yijian: Enter translates; Shift+Enter inserts a newline. The shift state is the
+            // keyboard's own shift layer, so no physical key tracking is needed.
+            val isShiftPressed = state.flags.inputShiftState != InputShiftState.UNSHIFTED
+            if (isShiftPressed) {
+                translationManager.flushBufferOnEnter(this)
+                emitEnterKey()
+                return
+            }
+            if (translationManager.hasBufferedText()) {
+                translationManager.translateNow()
+                return
+            }
+            translationManager.flushBufferOnEnter(this)
+            if (info.imeOptions.flagNoEnterAction || info.inputAttributes.flagTextMultiLine) {
                 emitEnterKey()
             } else {
                 when (val action = info.imeOptions.action) {

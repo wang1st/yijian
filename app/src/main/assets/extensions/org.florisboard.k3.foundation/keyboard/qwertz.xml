@@ -11,7 +11,6 @@
         <display keyId="base-numeric" display="${base_display}" />
         <display keyId="symbols-numeric" display="${symbol_1_display}" />
         <display keyId="space-numeric" display="@fl:icon/space_bar" />
-        <display keyId="translate" display="译" />
         <display keyId="voice" display="🎤" />
     </displays>
 
@@ -27,8 +26,8 @@
         <key id="symbol-2" layerId="symbol-2" width="1.5" />
 
         <key id="bksp" output="@k3:action/backspace" stretch="true" />
-        <key id="enter" output="@k3:action/enter" width="1.6" />
-        <key id="translate" output="@fl:action/translate" width="1.15" />
+        <!-- Enter doubles as the translate key; Shift+Enter inserts a newline -->
+        <key id="enter" output="@k3:action/enter" width="2.2" />
         <key id="voice" output="@fl:action/voice_input" width="1.15" />
         <key id="space-no-stretch" output="\u{0020}" />
         <!-- Long-press the space bar to talk (push-to-talk voice input) -->
@@ -281,14 +280,14 @@
             <row keys="q w e r t y u i o p" />
             <row keys="a s d f g h j k l" />
             <row keys="base-to-shift z x c v b n m bksp" />
-            <row keys="symbol-1 comma fn-key voice-space period translate enter" />
+            <row keys="symbol-1 comma fn-key voice-space period enter" />
         </layer>
 
         <layer id="shift">
             <row keys="Q W E R T Y U I O P" />
             <row keys="A S D F G H J K L" />
             <row keys="shift-to-base Z X C V B N M bksp" />
-            <row keys="symbol-1 comma fn-key voice-space period translate enter" />
+            <row keys="symbol-1 comma fn-key voice-space period enter" />
         </layer>
 
         <layer id="symbol-1">
