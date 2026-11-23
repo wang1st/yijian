@@ -1,158 +1,142 @@
-<img align="left" width="80" height="80"
-src=".github/repo_icon.png" alt="App icon">
+# 译键 (Yijian)
 
-# FlorisBoard [![Crowdin](https://badges.crowdin.net/florisboard/localized.svg)](https://crowdin.florisboard.org) [![Matrix badge](https://img.shields.io/badge/chat-%23florisboard%3amatrix.org-blue)](https://matrix.to/#/#florisboard:matrix.org) [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md) [![FlorisBoard CI](https://github.com/florisboard/florisboard/actions/workflows/android.yml/badge.svg?event=push)](https://github.com/florisboard/florisboard/actions/workflows/android.yml)
+把蹩脚英文打成地道中文，同时当你的私人英语老师。
 
-**FlorisBoard** is a free and open-source keyboard for Android 8.0+
-devices. It aims at being modern, user-friendly and customizable while
-fully respecting your privacy. Currently in beta state.
+一个基于 [FlorisBoard](https://github.com/florisboard/florisboard) 改造的 Android 输入法：你输入英文（允许语法错、拼写错、想到哪写到哪），它给你中文译文、地道英文说法，并在积累到一定练习量后把学习报告发到你邮箱。
 
-<table>
-<tr>
-<th style="text-align: center; width: 50%">
-<h3>Stable <a href="https://github.com/florisboard/florisboard/releases/latest"><img alt="Latest stable release" src="https://img.shields.io/github/v/release/florisboard/florisboard?sort=semver&display_name=tag&color=28a745"></a></h3>
-</th>
-<th style="text-align: center; width: 50%">
-<h3>Preview <a href="https://github.com/florisboard/florisboard/releases"><img alt="Latest preview release" src="https://img.shields.io/github/v/release/florisboard/florisboard?include_prereleases&sort=semver&display_name=tag&color=fd7e14"></a></h3>
-</th>
-</tr>
-<tr>
-<td style="vertical-align: top">
-<p><i>Major versions only</i><br><br>Updates are more polished, new features are matured and tested through to ensure a stable experience.</p>
-</td>
-<td style="vertical-align: top">
-<p><i>Major + Alpha/Beta/Rc versions</i><br><br>Updates contain new features that may not be fully matured yet and bugs are more likely to occur. Allows you to give early feedback.</p>
-</td>
-</tr>
-<tr>
-<td style="vertical-align: top">
-<p>
-<a href="https://apt.izzysoft.de/fdroid/index/apk/dev.patrickgold.florisboard"><img src="https://gitlab.com/IzzyOnDroid/repo/-/raw/master/assets/IzzyOnDroid.png" height="64" alt="IzzySoft repo badge"></a>
-<a href="https://f-droid.org/packages/dev.patrickgold.florisboard"><img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png" height="64" alt="F-Droid badge"></a>
-</p>
-<p>
+> 个人自用项目，为「英文水平有限的中国人」这个场景专门设计。
 
-**Google Play**: Join the [FlorisBoard Test Group](https://groups.google.com/g/florisboard-closed-beta-test), then visit the [testing page](https://play.google.com/apps/testing/dev.patrickgold.florisboard). Once joined and installed, updates will be delivered like for any other app. ([Store entry](https://play.google.com/store/apps/details?id=dev.patrickgold.florisboard))
+---
 
-</p>
-<p>
+## 它能做什么
 
-**Obtainium**: [Auto-import stable config][obtainium_stable]
+### 输入即翻译
+- 打字时英文**不进目标应用**，先落在输入法自己的预编辑缓冲里
+- 点回车（或按「译」）→ 模型返回中文译文
+- 选中哪条中文，哪条才上屏；英文不留痕迹
+- 打错了整段放弃？「✕ 清除」全丢掉，什么都不发
 
-</p>
-<p>
+### 私人英语老师
+- 每句话都给**最地道的英文说法**（不是逐字直译）
+- 拼写、语法、用词、表达问题逐条指出，说明规则
+- 键盘输入场景下**不计较大小写和标点**——小写开头、缺逗号、`im`/`u`/`wanna` 都不算错
 
-**Manual**: Download and install the APK from the release page.
+### 语音输入
+- **长按空格键说话**，松开自动识别（中英粤日韩等 20+ 语言自动判别）
+- 语音模式下的批改会特别针对「不知道怎么用英文说」的情况
+- 老师版那行有 🔊 按钮，用 TTS 朗读英文练听力
 
-</p>
-</td>
-<td style="vertical-align: top">
-<p><a href="https://apt.izzysoft.de/fdroid/index/apk/dev.patrickgold.florisboard.beta"><img src="https://gitlab.com/IzzyOnDroid/repo/-/raw/master/assets/IzzyOnDroid.png" height="64" alt="IzzySoft repo badge"></a></p>
-<p>
+### 学习报告
+- 每句话自动记录：原句、规范版、问题分类
+- 积累满 N 词（默认 200）自动生成报告并**发到你的邮箱**
+- 报告是排版好的 PDF 附件：错误分布条形图、最需要练的 5 个点、逐句批改
 
-**Google Play**: Join the [FlorisBoard Test Group](https://groups.google.com/g/florisboard-closed-beta-test), then visit the [preview testing page](https://play.google.com/apps/testing/dev.patrickgold.florisboard.beta). Once joined and installed, updates will be delivered like for any other app. ([Store entry](https://play.google.com/store/apps/details?id=dev.patrickgold.florisboard.beta))
+---
 
-</p>
-<p>
+## 技术栈
 
-**Obtainium**: [Auto-import preview config][obtainium_preview]
+| 部分 | 实现 |
+|---|---|
+| 键盘底子 | FlorisBoard fork（Kotlin + Jetpack Compose，keyboard3 架构）|
+| 翻译 | DeepSeek Chat API（OpenAI 兼容，可换任意兼容服务）|
+| 语音识别 | DeepSeek `POST /v1/tools/asr`（16kHz PCM WAV）|
+| 语音合成 | DeepSeek `POST /v1/tools/tts` |
+| 邮件 | 自研零依赖 SMTP 客户端（SSL/STARTTLS + AUTH LOGIN）|
+| 报告 PDF | `android.graphics.pdf.PdfDocument` 手绘 A4 排版 |
 
-</p>
-<p>
+### 模型交互的几个关键决策
 
-**Manual**: Download and install the APK from the release page.
+单句翻译**不需要推理**。实测 `deepseek-flash` 开启推理时延迟 2.0–2.9s、推理 token 吃掉 60–70% 预算，关掉后 0.9–1.2s 且质量无差。代码里通过 `thinking: {"type": "disabled"}` 关闭，并对不支持该参数的服务商自动降级重试。
 
-</p>
-</td>
-</tr>
-</table>
+预算按句长动态计算（`400 + 词数 × 40`，上限 3000），被截断时**自动加倍重试**，仍失败才报错——用户不该为模型的一次抽风买单。
 
-Beginning with v0.7 FlorisBoard will enter the public beta on Google Play.
+---
 
-## Highlighted features
-- Integrated clipboard manager / history
-- Advanced theming support and customization
-- Integrated extension support (still evolving)
-- Emoji keyboard / history / suggestions
+## 构建
 
-> [!IMPORTANT]
-> Word suggestions/spell checking are not included in the current releases
-> and are a major goal for the v0.6 milestone.
+### GitHub Actions（推荐）
 
-Feature roadmap: See [ROADMAP.md](ROADMAP.md)
+推送到 `main` 即触发，产物在 Actions 页面的 Artifacts 里。
 
-## Contributing
-Want to contribute to FlorisBoard? That's great to hear! There are lots of
-different ways to help out, please see the [contribution guidelines](CONTRIBUTING.md) for more info.
+仓库需要在 Settings → Secrets 里配置（可选，不配则用 debug 签名）：
 
-## Addons Store
-The official [Addons Store](https://beta.addons.florisboard.org) offers the possibility for the community to share and download FlorisBoard extensions.
-Instructions on how to publish addons can be found [here](https://docs.florisboard.org/publishing).
-
-Many thanks to Ali ([@4H1R](https://github.com/4H1R)) for implementing the store!
-
-> [!NOTE]
-> During the initial beta release phase, the Addons Store _will_ only accept theme extensions.
-> Later on we plan to add support for language packs and keyboard extensions.
-
-## List of permissions FlorisBoard requests
-Please refer to this [page](https://docs.florisboard.org/permissions)
-to get more information on this topic.
-
-## APK signing certificate hashes
-
-The package names and SHA-256 hashes of the signature certificate are listed below, so you can verify both FlorisBoard variants with apksigner by using `apksigner verify --print-certs florisboard-<version>-<track>.apk` when you download the APK.
-If you have [AppVerifier](https://github.com/soupslurpr/AppVerifier) installed, you can alternatively copy both the package name and the hash of the corresponding track and share them to AppVerifier.
-
-##### Stable track:
-
-dev.patrickgold.florisboard<br>
-0B:80:71:64:50:8E:AF:EB:1F:BB:81:5B:E7:A2:3C:77:FE:68:9D:94:B1:43:75:C9:9B:DA:A9:B6:57:7F:D6:D6
-
-##### Preview track:
-
-dev.patrickgold.florisboard.beta<br>
-0B:80:71:64:50:8E:AF:EB:1F:BB:81:5B:E7:A2:3C:77:FE:68:9D:94:B1:43:75:C9:9B:DA:A9:B6:57:7F:D6:D6
-
-
-## Used libraries, components and icons
-* [AndroidX libraries](https://github.com/androidx/androidx) by
-  [Android Jetpack](https://github.com/androidx)
-* [AboutLibraries](https://github.com/mikepenz/AboutLibraries) by
-  [mikepenz](https://github.com/mikepenz)
-* [Google Material icons](https://github.com/google/material-design-icons) by
-  [Google](https://github.com/google)
-* [JetPref preference library](https://github.com/patrickgold/jetpref) by
-  [patrickgold](https://github.com/patrickgold)
-* [KotlinX coroutines library](https://github.com/Kotlin/kotlinx.coroutines) by
-  [Kotlin](https://github.com/Kotlin)
-* [KotlinX serialization library](https://github.com/Kotlin/kotlinx.serialization) by
-  [Kotlin](https://github.com/Kotlin)
-
-Many thanks to [Nikolay Anzarov](https://www.behance.net/nikolayanzarov) ([@BloodRaven0](https://github.com/BloodRaven0)) for designing and providing the main app icons to this project!
-
-## License
 ```
-Copyright 2020-2026 The FlorisBoard Contributors
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+YIJIAN_KEYSTORE_BASE64   # base64 -w0 your.p12
 ```
 
-Thanks to [The FlorisBoard Contributors](https://github.com/florisboard/florisboard/graphs/contributors) for making this project possible!
+签名密码通过环境变量传入，不写进仓库：
 
-<!-- BEGIN SECTION: obtainium_links -->
-<!-- auto-generated link templates, do NOT edit by hand -->
-<!-- see fastlane/update-readme.sh -->
-[obtainium_preview]: https://apps.obtainium.imranr.dev/redirect.html?r=obtainium://app/%7B%22id%22%3A%22dev.patrickgold.florisboard.beta%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2Fflorisboard%2Fflorisboard%22%2C%22author%22%3A%22florisboard%22%2C%22name%22%3A%22FlorisBoard%20Preview%22%2C%22additionalSettings%22%3A%22%7B%5C%22includePrereleases%5C%22%3Atrue%2C%5C%22fallbackToOlderReleases%5C%22%3Atrue%2C%5C%22apkFilterRegEx%5C%22%3A%5C%22preview%5C%22%7D%22%7D%0A
-[obtainium_stable]: https://apps.obtainium.imranr.dev/redirect.html?r=obtainium://app/%7B%22id%22%3A%22dev.patrickgold.florisboard%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2Fflorisboard%2Fflorisboard%22%2C%22author%22%3A%22florisboard%22%2C%22name%22%3A%22FlorisBoard%20Stable%22%2C%22additionalSettings%22%3A%22%7B%5C%22includePrereleases%5C%22%3Afalse%2C%5C%22fallbackToOlderReleases%5C%22%3Atrue%2C%5C%22apkFilterRegEx%5C%22%3A%5C%22stable%5C%22%7D%22%7D%0A
-<!-- END SECTION: obtainium_links -->
+```bash
+export YIJIAN_KEYSTORE=path/to/yijian.p12
+export YIJIAN_STORE_PASSWORD=...
+export YIJIAN_KEY_ALIAS=yijian
+export YIJIAN_KEY_PASSWORD=...
+./gradlew assembleDebug
+```
+
+### 本地
+
+需要 JDK 17、Android SDK、CMake、Ninja：
+
+```bash
+./gradlew assembleDebug
+# 产物: app/build/outputs/apk/debug/app-debug.apk
+```
+
+---
+
+## 首次使用
+
+1. 安装后把「译键」设为默认输入法
+2. 打开应用 → **AI 翻译** → 填 API Key（[platform.deepseek.com](https://platform.deepseek.com) 申请）
+3. 打开「启用 AI 翻译」开关
+4. 想要报告的话，在同一页填收件邮箱和 SMTP 信息
+   - QQ 邮箱：`smtp.qq.com:465`，密码处填**授权码**（不是登录密码，在邮箱设置里生成）
+
+### 手势
+
+| 操作 | 效果 |
+|---|---|
+| 打字 | 英文进预编辑缓冲，不发送 |
+| 回车 | 翻译 |
+| Shift + 回车 | 换行 |
+| 长按空格 | 按住录音，松开发送识别 |
+| 点候选 | 该译文上屏 |
+| 「放弃翻译，发送原文」 | 英文原样上屏 |
+| 「✕ 清除」 | 全部丢弃 |
+
+---
+
+## 隐私
+
+- 打字内容**只在触发翻译时**发送给你配置的模型服务商
+- 密码框和不可翻译的输入框自动跳过，不发送任何内容
+- 练习记录只存在本机 `files/yijian_practice.jsonl`，报告发出后才清除
+- 邮件凭据和 API Key 仅存于本应用私有目录
+
+---
+
+## 已知限制
+
+- 语音识别单次上限 120 秒 / 8 MiB（API 限制）
+- 报告依赖 SMTP，部分邮箱需先开启 SMTP 服务并生成授权码
+- 无离线模式（未实现端侧模型兜底）
+
+---
+
+## 许可证
+
+**个人与非商业使用许可（Non-Commercial License）** —— 见 [LICENSE](LICENSE)。
+
+简单说：**可以随便用、随便改、随便分享，但不能拿它赚钱。**
+
+底层的 FlorisBoard 代码遵循 Apache License 2.0，本项目的修改部分在上游许可基础上增加了商业使用限制。
+
+---
+
+## 致谢
+
+- [FlorisBoard](https://github.com/florisboard/florisboard) —— 键盘基础，Apache-2.0
+- [k3lp](https://github.com/k3lp) —— 键盘布局引擎
+- [jetpref](https://github.com/patrickgold/jetpref) —— 偏好设置框架
+- [DeepSeek](https://www.deepseek.com) —— 翻译与语音 API

@@ -62,14 +62,22 @@ configure<ApplicationExtension> {
         targetCompatibility = JavaVersion.VERSION_11
     }
 
+    // The keystore is never committed. CI writes it from a GitHub secret; a local build
+    // falls back to a generated debug keystore when nothing is provided.
     signingConfigs {
         create("yijian") {
-            storeFile = file("yijian.p12")
-            storePassword = "yijian-debug-key"
-            keyAlias = "yijian"
-            keyPassword = "yijian-debug-key"
-            enableV1Signing = true
-            enableV2Signing = true
+            val storePath = System.getenv("YIJIAN_KEYSTORE") ?: "yijian.p12"
+            val storePass = System.getenv("YIJIAN_STORE_PASSWORD") ?: "yijian-debug-key"
+            val alias = System.getenv("YIJIAN_KEY_ALIAS") ?: "yijian"
+            val keyPass = System.getenv("YIJIAN_KEY_PASSWORD") ?: storePass
+            if (file(storePath).exists()) {
+                storeFile = file(storePath)
+                storePassword = storePass
+                keyAlias = alias
+                keyPassword = keyPass
+                enableV1Signing = true
+                enableV2Signing = true
+            }
         }
     }
 
@@ -112,7 +120,8 @@ configure<ApplicationExtension> {
             // Keep the commit hash so an installed build can be traced, drop the "-debug" noise
             versionNameSuffix = "+${getGitCommitHash(short = true).get()}"
 
-            signingConfig = signingConfigs.getByName("yijian")
+            signingConfig = signingConfigs.getByName("yijian").takeIf { it.storeFile != null }
+                ?: signingConfigs.getByName("debug")
             isDebuggable = true
             isJniDebuggable = false
         }
