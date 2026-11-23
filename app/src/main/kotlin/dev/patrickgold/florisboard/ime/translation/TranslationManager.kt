@@ -113,6 +113,12 @@ class TranslationManager(
      */
     private val readTimeoutSeconds = 60
 
+    /** Inputs at or below this length are translated in full rather than tail-only. */
+    private val MAX_TRANSLATE_CHARS = 400
+    private val MIN_TRANSLATE_CHARS = 8
+    private val MIN_LATIN_LETTERS = 2
+    private val MIN_CJK_CHARS = 2
+
     /** Records every finished sentence and produces the periodic English report. */
     val teacher = EnglishTeacher()
 
@@ -334,7 +340,7 @@ class TranslationManager(
 
         if (buffer.isNotEmpty()) {
             val english = buffer.toString().trimEnd('.', '!', '?').trim()
-            if (!isTranslatableTail(english, requireTwoWords = false)) {
+            if (!hasTranslatableContent(english, requireTwoWords = false)) {
                 setStatus(Status.ERROR, "内容太短，没有可翻译的英文")
                 return
             }
@@ -513,37 +519,67 @@ class TranslationManager(
      * tail and the preceding context. Returns null if the tail does not look like an
      * English sentence worth translating.
      */
-    private fun extractSentence(beforeCursor: String): Pair<String, String>? {
-        return extractTail(beforeCursor.dropLast(1), requireTwoWords = true)
-    }
-
     /**
      * Extracts the last sentence-like tail from [content] (no trailing punctuation assumed).
      */
+    /**
+     * Extracts the text to translate from [content] (what the user has typed).
+     *
+     * The whole buffer is used when it is reasonably short; for long input only the trailing
+     * sentence is taken so the request stays focused. Mixed Chinese/English is supported: the
+     * model handles both, so a CJK character must never make the input "untranslatable".
+     */
     private fun extractTail(content: String, requireTwoWords: Boolean = false): Pair<String, String>? {
-        val boundaries = listOf('.', '!', '?', '\n', '。', '！', '？')
+        val trimmed = content.trim()
+        if (trimmed.isEmpty()) return null
+
+        // Prefer the whole buffer unless it is long enough to be several sentences.
+        if (trimmed.length <= MAX_TRANSLATE_CHARS) {
+            if (!hasTranslatableContent(trimmed, requireTwoWords)) return null
+            return trimmed to ""
+        }
+
+        // Long input: keep the last sentence, but never drop below the cap.
+        val boundaries = listOf('.', '!', '?', '\n', '。', '！', '？', '；', ';')
         var idx = -1
         for (b in boundaries) {
-            val i = content.lastIndexOf(b)
+            val i = trimmed.lastIndexOf(b)
             if (i > idx) idx = i
         }
-        val tail = content.substring(idx + 1).trim()
-        if (!isTranslatableTail(tail, requireTwoWords)) return null
-        val context = content.substring(0, idx + 1).takeLast(200)
-        return tail to context
+        val tail = if (idx >= 0 && idx < trimmed.length - 1) {
+            trimmed.substring(idx + 1).trim()
+        } else {
+            trimmed.takeLast(MAX_TRANSLATE_CHARS)
+        }
+        val candidate = if (tail.length < MIN_TRANSLATE_CHARS) trimmed.takeLast(MAX_TRANSLATE_CHARS) else tail
+        if (!hasTranslatableContent(candidate, requireTwoWords)) return null
+        val context = trimmed.substring(0, (trimmed.length - candidate.length).coerceAtLeast(0)).takeLast(200)
+        return candidate to context
     }
 
-    private fun isTranslatableTail(tail: String, requireTwoWords: Boolean): Boolean {
-        if (tail.isEmpty()) return false
-        // Already Chinese? Don't re-translate.
-        if (tail.any { it.code > 0x2E7F }) return false
-        val letters = tail.count { it.isLetter() && it.code < 128 }
-        if (letters < 2) return false
-        // When triggered by punctuation require at least two words or a reasonably long
-        // single token, to avoid triggering on "Mr.", "3.", "e.g." style fragments.
-        if (requireTwoWords && !tail.any { it.isWhitespace() } && tail.length < 12) return false
+    /**
+     * True when [text] has enough substance to be worth a request. Chinese counts as content:
+     * the user may type Chinese and ask for an English rendering, or mix both languages.
+     */
+    private fun hasTranslatableContent(text: String, requireTwoWords: Boolean): Boolean {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return false
+
+        val latinLetters = trimmed.count { it.isLetter() && it.code < 0x2E7F }
+        val cjkChars = trimmed.count { it.code in 0x3400..0x9FFF || it.code in 0xF900..0xFAFF }
+
+        // Chinese input is valid content on its own (and often what the user asks about).
+        if (cjkChars >= MIN_CJK_CHARS) return true
+        if (latinLetters < MIN_LATIN_LETTERS) return false
+
+        // Punctuation-triggered path: avoid firing on "Mr.", "3.", "e.g." style fragments.
+        if (requireTwoWords && trimmed.none { it.isWhitespace() } && trimmed.length < 12) return false
         return true
     }
+
+
+
+
 
 
     /**
@@ -615,6 +651,11 @@ class TranslationManager(
 - 聊天常用缩写与口语简写（im、u、dont、cant、wanna、gonna、thx 等）
 只有在拼写确实拼错（如 recieve）、语法结构错误（时态/主谓一致/缺冠词）、用词不当或表达不地道时才指出来。
 corrected 字段仍给出完全规范的英文（含正确大小写和标点），供参考。
+
+补充：用户也可能直接输入中文，或中英文混着输入。这种情况下：
+- translations 给出对应的**英文**说法（他要的是用地道英文表达这个意思）；
+- corrected 仍然是这句话的英文版本；
+- corrections 列出他英文部分的表达问题，纯中文部分不用挑错；中文里如果用了不地道的说法，可以在 note 里点一句。
 
 严格只输出 JSON，不要输出任何其他内容：
 {"corrected":"...","translations":["..."],"corrections":[{"tag":"语法","wrong":"...","right":"...","why":"..."}],"note":"..."}"""
