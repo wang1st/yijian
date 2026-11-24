@@ -1,0 +1,5 @@
+<resources>
+    <string name="yijian_key_enable_pinyin">Turn on Pinyin input</string>
+    <string name="yijian_key_disable_pinyin">Turn off Pinyin input</string>
+    <string name="yijian_key_translate">Translate this text</string>
+</resources>

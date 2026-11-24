@@ -32,6 +32,8 @@ object ImeIcons {
     val Delete = flIcon("delete")
     val DragMarker = flIcon("drag_marker")
     val Enter = flIcon("enter")
+    val Pinyin = flIcon("pinyin")
+    val Translate = flIcon("translate")
     val HideKeyboard = flIcon("hide_keyboard")
     val LanguageSwitch = flIcon("language_switch")
     val ClipboardPanel = flIcon("clipboard_panel")

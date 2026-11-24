@@ -14,7 +14,6 @@
         <display keyId="symbols-numeric" display="${symbol_1_display}" />
         <display keyId="space-numeric" display="@fl:icon/space_bar" />
         <display keyId="voice" display="🎤" />
-        <display keyId="pinyin" display="中" />
     </displays>
 
     <keys>

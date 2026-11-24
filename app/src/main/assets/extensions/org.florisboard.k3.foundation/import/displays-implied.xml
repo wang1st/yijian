@@ -26,6 +26,8 @@ the mapping to a different display value.
     <display output="@k3:action/backspace" display="@fl:icon/backspace" />
     <display output="@k3:action/delete" display="@fl:icon/delete" />
     <display output="@k3:action/enter" display="@fl:icon/enter" />
+    <display output="@fl:action/toggle_pinyin" display="@fl:icon/pinyin" />
+    <display output="@fl:action/translate" display="@fl:icon/translate" />
 
     <display output="@fl:action/arrow_down" display="@fl:icon/arrow_down" />
     <display output="@fl:action/arrow_left" display="@fl:icon/arrow_left" />

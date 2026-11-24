@@ -1,0 +1,5 @@
+<resources>
+    <string name="yijian_key_enable_pinyin">开启拼音输入</string>
+    <string name="yijian_key_disable_pinyin">关闭拼音输入</string>
+    <string name="yijian_key_translate">翻译当前文字</string>
+</resources>
