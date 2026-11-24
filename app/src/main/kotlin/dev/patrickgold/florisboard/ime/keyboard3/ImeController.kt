@@ -165,19 +165,15 @@ class ImeController(
     /** The English teacher: practice records and the emailed report. */
     val teacher get() = translationManager.teacher
 
-    val activeTouchModelOptions = combine(
-        listOf(
-            prefs.keyboard.numberRow.asFlow(),
-            prefs.keyboard.fnKeyEnabled.asFlow(),
-            prefs.keyboard.fnKeyArrangement.asFlow(),
-            prefs.keyboard.longPressKeyHintEnabled.asFlow(),
-            prefs.keyboard.longPressKeyHintPlacement.asFlow(),
-            prefs.keyboard.multiTapHighlightEnabled.asFlow(),
-            prefs.keyboard.flickKeyHintEnabled.asFlow(),
-            prefs.keyboard.flickKeyHintPlacement.asFlow(),
-            // Rebuilds the layout so the 中/英 key label follows the mode.
-            pinyin.active,
-        ),
+    val activeTouchModelOptions = combine<Any, TouchModelOptions>(
+        prefs.keyboard.numberRow.asFlow(),
+        prefs.keyboard.fnKeyEnabled.asFlow(),
+        prefs.keyboard.fnKeyArrangement.asFlow(),
+        prefs.keyboard.longPressKeyHintEnabled.asFlow(),
+        prefs.keyboard.longPressKeyHintPlacement.asFlow(),
+        prefs.keyboard.multiTapHighlightEnabled.asFlow(),
+        prefs.keyboard.flickKeyHintEnabled.asFlow(),
+        prefs.keyboard.flickKeyHintPlacement.asFlow(),
     ) { values ->
         TouchModelOptions(
             showNumberRow = values[0] as Boolean,
@@ -188,7 +184,6 @@ class ImeController(
             multiTapHighlightEnabled = values[5] as Boolean,
             flickKeyHintEnabled = values[6] as Boolean,
             flickKeyHintPlacement = values[7] as FlickKeyHintPlacement,
-            pinyinActive = values[8] as Boolean,
         )
     }.stateIn(scope, SharingStarted.Eagerly, TouchModelOptions.Default)
 
