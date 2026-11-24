@@ -125,6 +125,9 @@ class ImeController(
     /** Reads [text] aloud via DeepSeek TTS. */
     fun speak(text: String) = translationManager.speak(text)
 
+    /** Non-null while the last accepted translation can still be undone. */
+    val translationUndoable get() = translationManager.undoable
+
     /** The English teacher: practice records and the emailed report. */
     val teacher get() = translationManager.teacher
 
@@ -352,14 +355,17 @@ class ImeController(
         }
 
         override fun emitText(value: K3String) {
-            if (translationManager.interceptEmitText(value, this)) {
-                return
-            }
+            // S1: never consumed — the text goes straight to the editor and stays visible.
+            translationManager.observeEmitText(value, this)
             super.emitText(value)
             expectedContentQueue.push(state.content)
             reevaluateInputShiftState()
             translationManager.maybeTranslateOnPunct(value)
         }
+
+        private data class ReplacedText(val original: String, val translated: String, val timestamp: Long)
+        private var lastReplacement: ReplacedText? = null
+        private val UNDO_WINDOW_MS = 5000L
 
         /**
          * Commits text straight into the target editor, bypassing the yijian pre-edit buffer.
@@ -505,28 +511,25 @@ class ImeController(
         }
 
         override fun emitBackspace() {
-            if (translationManager.interceptBackspace(this)) {
-                return
-            }
+            translationManager.observeBackspace(this)
             super.emitBackspace()
             expectedContentQueue.push(state.content)
         }
 
         override fun emitEnter() {
             val info = state.editor.info
-            // yijian: Enter translates; Shift+Enter inserts a newline. The shift state is the
-            // keyboard's own shift layer, so no physical key tracking is needed.
+            // yijian: Enter translates, Shift+Enter inserts a newline. The shift state comes from
+            // the keyboard's own shift layer, so no physical key tracking is needed.
             val isShiftPressed = state.flags.inputShiftState != InputShiftState.UNSHIFTED
             if (isShiftPressed) {
-                translationManager.flushBufferOnEnter(this)
                 emitEnterKey()
                 return
             }
-            if (translationManager.hasBufferedText()) {
+            // S1: the text is already in the editor, so Enter always means "translate this".
+            if (prefs.translation.enabled.get()) {
                 translationManager.translateNow()
                 return
             }
-            translationManager.flushBufferOnEnter(this)
             if (info.imeOptions.flagNoEnterAction || info.inputAttributes.flagTextMultiLine) {
                 emitEnterKey()
             } else {
@@ -602,16 +605,51 @@ class ImeController(
         fun emitTranslationCandidate(candidate: TranslationSuggestionCandidate) {
             val newText = candidate.text.toString()
             val pending = translationManager.pendingEnglish
+
+            // Only replace when the tail still matches what we translated: the user may have
+            // edited the sentence while the request was in flight.
             if (pending != null && pending.isNotEmpty()) {
                 val cur = state.editor.getSurroundingText(pending.length + 5, 0).textBefore
-                if (cur.endsWith(pending)) {
-                    state.editor.deleteSurroundingText(pending.length, 0)
+                if (!cur.endsWith(pending)) {
+                    // Tail changed — do not touch the editor, just append the translation.
+                    emitTextDirect(newText.asK3String())
+                    translationManager.pendingEnglish = null
+                    return
                 }
+                state.editor.deleteSurroundingText(pending.length, 0)
             }
+
             emitTextDirect(newText.asK3String())
+
+            // Undo window: remember what was replaced so the user can restore it.
+            if (pending != null && pending.isNotEmpty()) {
+                lastReplacement = ReplacedText(
+                    original = pending,
+                    translated = newText,
+                    timestamp = System.currentTimeMillis(),
+                )
+                translationManager.offerUndo(pending)
+            }
+
             translationManager.pendingEnglish = null
             translationManager.clearBuffer()
             translationManager.resetLastCommitted()
+        }
+
+        /** Restores the English that the last accepted translation replaced. */
+        fun undoLastReplacement() {
+            val replaced = lastReplacement ?: return
+            if (System.currentTimeMillis() - replaced.timestamp > UNDO_WINDOW_MS) {
+                lastReplacement = null
+                return
+            }
+            val cur = state.editor.getSurroundingText(replaced.translated.length + 5, 0).textBefore
+            if (cur.endsWith(replaced.translated)) {
+                state.editor.deleteSurroundingText(replaced.translated.length, 0)
+                emitTextDirect(replaced.original.asK3String())
+            }
+            lastReplacement = null
+            translationManager.clearUndo()
         }
 
         fun emitClipboardItem(item: ClipboardItem?): Boolean {

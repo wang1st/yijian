@@ -148,6 +148,7 @@ class TranslationManager(
         status.value = newStatus
     }
 
+    @Deprecated("S1: text is no longer buffered; use the editor content")
     fun hasBufferedText(): Boolean = buffer.isNotEmpty()
 
     /** True when there is something worth showing in the panel (draft, candidates or an error). */
@@ -177,44 +178,45 @@ class TranslationManager(
     }
 
     /**
-     * Intercepts a text emit while pre-edit is active. Returns true if the emit was consumed
-     * into the buffer (sentence-ending punctuation additionally triggers a translation).
+     * S1: text is NO LONGER held back. Everything the user types goes straight into the target
+     * editor, so it is always visible and survives switching apps. We only track how far the
+     * cursor has moved so a translation can replace the sentence in place.
+     *
+     * @return always false — the emit is never consumed.
      */
-    fun interceptEmitText(value: K3String, scope: ImeController.UpdateImeStateScope): Boolean {
+    fun observeEmitText(value: K3String, scope: ImeController.UpdateImeStateScope): Boolean {
         if (!preeditActive(scope.state)) return false
         val s = value.toText()
-        val last = s.lastOrNull()
-        buffer.append(s)
-        preeditText.value = buffer.toString()
-        if (status.value == Status.ERROR) {
-            setStatus(Status.IDLE)
-        }
-        // Translation is triggered only by the 「译」 key (see translateNow), never
-        // automatically on sentence-ending punctuation.
-        return true
+        trackedLength += s.length
+        if (status.value == Status.ERROR) setStatus(Status.IDLE)
+        return false
     }
 
-    /** Intercepts backspace while pre-edit is active. Returns true if consumed. */
-    fun interceptBackspace(scope: ImeController.UpdateImeStateScope): Boolean {
+    /** Backspace is never intercepted either; just keep the tracked length in sync. */
+    fun observeBackspace(scope: ImeController.UpdateImeStateScope): Boolean {
         if (!preeditActive(scope.state)) return false
-        if (buffer.isEmpty()) return false
-        // delete last UTF-16 code point (handle surrogate pairs)
-        var end = buffer.length - 1
-        if (end > 0 && buffer[end].isLowSurrogate()) end--
-        buffer.setLength(end)
-        preeditText.value = buffer.toString()
-        return true
+        if (trackedLength > 0) trackedLength -= 1
+        return false
     }
 
-    /**
-     * Called before a normal Enter handling: flushes the buffer so the raw English is in the
-     * editor and Enter behaves as usual.
-     */
-    fun flushBufferOnEnter(scope: ImeController.UpdateImeStateScope) {
-        if (preeditActive(scope.state)) {
-            commitBufferAsRaw(scope)
+    /** Characters typed since the last translation, used to locate the sentence to replace. */
+    private var trackedLength = 0
+
+    /** Set while an accepted translation can still be undone (restores the English). */
+    val undoable = MutableStateFlow<String?>(null)
+
+    fun offerUndo(original: String) {
+        undoable.value = original
+        scope.launch {
+            kotlinx.coroutines.delay(5000)
+            undoable.value = null
         }
     }
+
+    fun clearUndo() {
+        undoable.value = null
+    }
+
 
     /**
      * Legacy hook from the non-pre-edit path. Intentionally a no-op: translation is manual only,
@@ -332,27 +334,17 @@ class TranslationManager(
             setStatus(Status.ERROR, "AI 翻译未开启")
             return
         }
-        if (inFlight) {
-            // Already translating; keep the current spinner rather than silently ignoring.
-            return
-        }
+        if (inFlight) return
+
         val state = imeController.snapshotState()
-
-        if (buffer.isNotEmpty()) {
-            val english = buffer.toString().trimEnd('.', '!', '?').trim()
-            if (!hasTranslatableContent(english, requireTwoWords = false)) {
-                setStatus(Status.ERROR, "内容太短，没有可翻译的英文")
-                return
-            }
-            translateSentence(english, state)
-            return
-        }
-
         val info = state.editor.info
         if (info.isRawInputEditor || info.inputAttributes.variation == InputAttributes.Variation.PASSWORD) {
             setStatus(Status.ERROR, "当前输入框不支持翻译")
             return
         }
+
+        // S1: the text lives in the editor now. Read what precedes the cursor and translate the
+        // trailing sentence; remembering it lets a candidate replace exactly that span.
         val beforeCursor = state.editor.getSurroundingText(500, 0).textBefore
         val extracted = extractTail(beforeCursor)
         if (extracted == null) {
@@ -375,7 +367,8 @@ class TranslationManager(
         scope.launch {
             try {
                 val result = withContext(Dispatchers.IO) { callApiBlocking(english, context, voiceMode) }
-                applyTranslation(english, null, result, trackPending = givenContext != null)
+                // The English is already in the editor, so a candidate click must replace it.
+                applyTranslation(english, null, result, trackPending = true)
                 setStatus(Status.IDLE)
             } catch (e: Exception) {
                 flogError { "yijian translation failed: ${e.message}" }

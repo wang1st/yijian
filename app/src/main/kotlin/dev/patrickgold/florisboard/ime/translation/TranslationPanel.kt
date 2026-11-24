@@ -72,6 +72,7 @@ fun TranslationPanel() {
     val nlpManager by context.nlpManager()
 
     val preedit by imeController.translationPreedit.collectAsState()
+    val undoable by imeController.translationUndoable.collectAsState()
     val status by imeController.translationStatus.collectAsState()
     val error by imeController.translationError.collectAsState()
     val voiceBusy by imeController.voiceBusy.collectAsState()
@@ -112,10 +113,14 @@ fun TranslationPanel() {
             nlpManager.clearSuggestions()
         },
         onClear = {
-            // Discard everything typed and everything translated: nothing is sent, nothing chosen
+            // Discard whatever is in the editor for this sentence and hide the panel
             imeController.updateStateBlocking {
                 translationClearAll()
             }
+            nlpManager.clearSuggestions()
+        },
+        onUndo = {
+            imeController.updateStateBlocking { undoLastReplacement() }
             nlpManager.clearSuggestions()
         },
     )
@@ -134,6 +139,7 @@ private fun TranslationPanelContent(
     onClick: (Int) -> Unit,
     onDismiss: () -> Unit,
     onClear: () -> Unit,
+    onUndo: () -> Unit,
 ) {
     val onSurface = LocalContentColor.current
     Column(
@@ -189,6 +195,10 @@ private fun TranslationPanelContent(
                     onSurface = onSurface,
                     onSpeak = onSpeak,
                 )
+            }
+            if (undoable != null) {
+                Divider(onSurface)
+                UndoRow(onSurface = onSurface, onUndo = onUndo)
             }
             Divider(onSurface)
             ActionRows(onSurface = onSurface, onDismiss = onDismiss, onClear = onClear)
@@ -420,6 +430,27 @@ private fun VoiceRow(
             fontSize = 14.sp,
             softWrap = true,
             modifier = Modifier.weight(1f, fill = true),
+        )
+    }
+}
+
+/** Shown for a few seconds after a translation replaced the original text. */
+@Composable
+private fun UndoRow(onSurface: androidx.compose.ui.graphics.Color, onUndo: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = TouchTarget)
+            .clickable(onClick = onUndo)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(text = "↩", color = onSurface.copy(alpha = 0.7f), fontSize = 15.sp)
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = "撤销，恢复英文",
+            color = onSurface.copy(alpha = 0.75f),
+            fontSize = 13.sp,
         )
     }
 }
