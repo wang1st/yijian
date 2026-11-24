@@ -159,7 +159,7 @@ class TranslationManager(
     }
 
     /** The translations currently present in the editor, newest last. */
-    fun translatedHistory(): List<TranslatedSpan> = translatedSpans.value
+    internal fun translatedHistory(): List<TranslatedSpan> = translatedSpans.value
 
     /**
      * Pre-edit buffer: while translation is enabled, typed text does NOT go to the target app.
