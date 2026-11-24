@@ -263,6 +263,11 @@ private fun ImeKeyboardKeyBox(
     val display = displayOverride ?: touchKey.display
     val output = touchKey.attrs.output
     val layerId = touchKey.attrs.layerId
+    // Mode indicator: the pinyin key is tinted while Chinese input is active, using the same
+    // shade as a pressed key so it reads as "switched on" rather than as a coloured widget.
+    val imeController = LocalImeController.current
+    val pinyinActive by imeController.pinyin.active.collectAsState()
+    val isPinyinKey = touchKey.attrs.id.value == "pinyin"
     val attributes: SnyggQueryAttributes = remember(output, layerId, inputShiftState) {
         buildMap {
             if (output != null) {
@@ -284,6 +289,13 @@ private fun ImeKeyboardKeyBox(
         selector = selector,
         modifier = modifier,
     ) {
+        if (pinyinActive && isPinyinKey) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(Color.Black.copy(alpha = 0.18f)),
+            )
+        }
         Row(
             modifier = Modifier
                 .align(Alignment.Center)

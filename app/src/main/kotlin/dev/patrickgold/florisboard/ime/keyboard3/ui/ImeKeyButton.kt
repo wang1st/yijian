@@ -85,9 +85,6 @@ fun ImeKeyButton(
     val touchLayerId by remember { derivedStateOf { imeState.touchLayerId } }
     val inputShiftState by remember { derivedStateOf { imeState.flags.inputShiftState } }
     val model by remember { derivedStateOf { imeState.model } }
-    val pinyinActive by imeController.pinyin.active.collectAsState()
-    // Compare by descriptor text so this does not depend on object identity across packages.
-    val isPinyinKey = remember(output) { output.toString().contains("toggle_pinyin") }
     val display = remember(model, output) { model.displays.byOutput[output]?.display ?: output }
 
     val isRepeatable = output.isRepeatable()
@@ -157,15 +154,6 @@ fun ImeKeyButton(
             },
         contentAlignment = Alignment.Center,
     ) {
-        // Mode indicator: while pinyin input is active the key carries the same tint a pressed
-        // key has, so it reads as "this mode is switched on" rather than as a coloured widget.
-        if (pinyinActive && isPinyinKey) {
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .background(Color.Black.copy(alpha = 0.18f)),
-            )
-        }
         content(display)
     }
 }
