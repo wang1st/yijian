@@ -693,6 +693,13 @@ class ImeController(
          */
         private fun replaceViaSelection(old: String, replacement: String): Boolean {
             val ic = state.editor.ic.get() ?: return false
+
+            // A word typed without a trailing space is still a composing region (it shows the
+            // spell-check underline). Selecting over it would fail, so finalise it first —
+            // finishComposingText() commits the text without changing it.
+            val hadComposing = state.content.composing.isValid
+            if (hadComposing) ic.finishComposingText()
+
             val start = state.content.selection.start
             val end = state.content.selection.end
             // Only meaningful when the selection is collapsed right after the text.

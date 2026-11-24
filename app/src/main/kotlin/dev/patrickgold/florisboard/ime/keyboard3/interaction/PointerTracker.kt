@@ -421,8 +421,16 @@ class PointerTracker(
             trackedOutputPointer.value?.let { trackedPointer ->
                 val spaceKey = trackedPointer.downKey
                 // longPressKeyIds holds K3KeyId values; compare by id text to avoid type inference
-                val isVoiceSpace = spaceKey.attrs.longPressKeyIds
-                    ?.any { id -> id.value == "voice" } == true
+                // Long-press shortcuts that act immediately instead of opening a popup list.
+                val longPressIds = spaceKey.attrs.longPressKeyIds
+                val isImeSwitch = longPressIds?.any { id -> id.value == "ime-switch" } == true
+                if (isImeSwitch) {
+                    imeController.updateState {
+                        emit(org.k3lp.lib.text.K3Descriptor("fl", "action", "show_input_method_picker"))
+                    }
+                    return@mutateLocked
+                }
+                val isVoiceSpace = longPressIds?.any { id -> id.value == "voice" } == true
                 if (isVoiceSpace) {
                     imeController.updateState {
                         emit(org.k3lp.lib.text.K3Descriptor("fl", "action", "voice_input"))
