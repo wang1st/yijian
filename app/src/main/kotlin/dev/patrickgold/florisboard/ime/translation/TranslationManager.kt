@@ -204,6 +204,10 @@ class TranslationManager(
         return false
     }
 
+    /** Monotonic id so a slow request cannot overwrite a newer one's candidates. */
+    @Volatile
+    private var requestTicket = 0
+
     /** Characters typed since the last translation, used to locate the sentence to replace. */
     private var trackedLength = 0
 
@@ -365,6 +369,7 @@ class TranslationManager(
         givenContext: String? = null,
         voiceMode: Boolean = false,
     ) {
+        val myTicket = ++requestTicket
         if (inFlight) return
         val context = givenContext ?: state.editor.getSurroundingText(300, 0).textBefore.takeLast(200)
         inFlight = true
@@ -372,6 +377,12 @@ class TranslationManager(
         scope.launch {
             try {
                 val result = withContext(Dispatchers.IO) { callApiBlocking(english, context, voiceMode) }
+                if (myTicket != requestTicket) {
+                    // A newer request superseded this one; its candidates would carry a stale
+                    // replace target, so drop the result instead of showing it.
+                    flogError { "yijian: dropping stale result (ticket $myTicket != $requestTicket)" }
+                    return@launch
+                }
                 // The English is already in the editor, so a candidate click must replace it.
                 applyTranslation(english, null, result, trackPending = true)
                 setStatus(Status.IDLE)
