@@ -578,6 +578,21 @@ class TranslationManager(
 
 
     /**
+     * Returns the trailing sentence of [text] — everything after the last sentence boundary.
+     * Used to pin down exactly which slice of the editor a translation should replace.
+     */
+    private fun extractTrailingSentence(text: String): String {
+        if (text.isEmpty()) return text
+        val boundaries = charArrayOf('.', '!', '?', '\n', '。', '！', '？', '；', ';')
+        var last = -1
+        for (b in boundaries) {
+            val i = text.lastIndexOf(b)
+            if (i > last) last = i
+        }
+        return if (last >= 0 && last < text.length - 1) text.substring(last + 1) else text
+    }
+
+    /**
      * @param typedPunct the punctuation character the user typed that triggered the translation,
      *  or null for a manual trigger via the 「译」 key (no punctuation is removed, but the
      *  translation is still terminated with a Chinese full stop).
@@ -608,24 +623,17 @@ class TranslationManager(
             )
         }
         if (trackPending) {
-            // Remember exactly what the user has in the editor so a candidate click can replace
-            // it. Snapshot the live tail rather than reconstructing it from `english`: trimming,
-            // punctuation and whitespace differences would otherwise break the later match.
-            // InputConnection reads must happen on the main thread.
+            // Take the text to replace straight from the editor instead of reconstructing it from
+            // `english`. `english` is what was *sent* (already trimmed), and the model may return
+            // a spelling-corrected form; neither is guaranteed to be a literal suffix of what the
+            // user actually typed. The editor tail is the only trustworthy source.
             val beforeCursor = withContext(Dispatchers.Main) {
-                imeController.snapshotState().editor.getSurroundingText(english.length + 40, 0).textBefore
+                imeController.snapshotState().editor.getSurroundingText(MAX_TRANSLATE_CHARS + 40, 0)
+                    .textBefore
             }
-            val actual = when {
-                beforeCursor.endsWith(english) -> english
-                else -> {
-                    // Fall back to the longest suffix of what we translated that is present.
-                    var len = minOf(english.length, beforeCursor.length)
-                    while (len > 0 && !beforeCursor.endsWith(english.takeLast(len))) len--
-                    if (len > 0) english.takeLast(len) else english
-                }
-            }
-            pendingEnglish = actual
-            flogError { "yijian: pending=<${actual.takeLast(60)}> measured=${actual.length}" }
+            val tail = extractTrailingSentence(beforeCursor)
+            pendingEnglish = tail
+            flogError { "yijian: pending=<${tail.takeLast(60)}> len=${tail.length}" }
         }
         // Offer the interpretations in the smartbar
         nlpManager.suggestDirectly(candidates.mapIndexed { i, t ->

@@ -634,11 +634,12 @@ class ImeController(
             if (pending != null && pending.isNotEmpty()) {
                 val tail = liveTextBefore(pending.length + 40)
                 if (!tail.endsWith(pending)) {
+                    // The user edited the sentence while the request was in flight. Replacing now
+                    // would delete the wrong characters, so delete nothing and just insert.
                     flogError {
-                        "yijian: replace skipped, tail mismatch. expected=<${pending.takeLast(40)}> " +
-                            "actual=<${tail.takeLast(40)}>"
+                        "yijian: tail mismatch, inserting instead of replacing. " +
+                            "pending=<${pending.takeLast(40)}> tail=<${tail.takeLast(40)}>"
                     }
-                    // Tail changed — do not touch the editor, just append the translation.
                     emitTextDirect(newText.asK3String())
                     translationManager.pendingEnglish = null
                     return
