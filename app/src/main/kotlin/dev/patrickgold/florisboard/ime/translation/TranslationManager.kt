@@ -112,24 +112,54 @@ class TranslationManager(
     @Volatile internal var pendingEnglish: String? = null
 
     /**
-     * Text that has already been translated and is awaiting the user's choice.
+     * Every piece of text that is currently in the editor *in translation form*: the range it
+     * occupies and the translation now sitting there.
      *
-     * Pressing Enter twice must not send the same sentence to the model again: the second press
-     * reuses the candidates already on screen. Cleared as soon as the text is replaced, cleared,
-     * or the editor no longer ends with it.
+     * Users translate sentence by sentence, so a single "last translated" marker kept getting
+     * overwritten and earlier work lost. Keeping the list lets us (a) skip work that is already
+     * done, (b) know which spans are translations rather than source text.
      */
+    internal data class TranslatedSpan(val translated: String, val source: String)
+
+    private val translatedSpans = MutableStateFlow<List<TranslatedSpan>>(emptyList())
+
+    /** Text we already translated and whose translation is currently on screen. */
     @Volatile internal var translatedSource: String? = null
 
-    /** True when [text] is what we already translated and have not replaced yet. */
+    /**
+     * True when [text] was translated and its translation has not been replaced since.
+     *
+     * Pressing Enter twice on the same sentence must not call the model again.
+     */
     fun isAlreadyTranslated(text: String): Boolean {
-        val previous = translatedSource ?: return false
-        return previous.trim() == text.trim()
+        val needle = text.trim()
+        if (needle.isEmpty()) return false
+        // The pending sentence (candidates still on screen) is the common case.
+        val pendingSource = translatedSource?.trim()
+        if (pendingSource != null && pendingSource == needle) return true
+        // Otherwise it may already have been accepted into the editor earlier.
+        return translatedSpans.value.any { it.source.trim() == needle }
+    }
+
+    /** Records that [source] has been translated to [translated]. */
+    fun rememberTranslation(source: String, translated: String) {
+        translatedSource = source
+        translatedSpans.value = translatedSpans.value + TranslatedSpan(translated, source)
     }
 
     /** Forgets the 「already translated」 marker, e.g. after the text was replaced or cleared. */
     fun clearTranslationMark() {
         translatedSource = null
     }
+
+    /** Drops all records of accepted translations, used when the editor is reset. */
+    fun clearTranslationHistory() {
+        translatedSource = null
+        translatedSpans.value = emptyList()
+    }
+
+    /** The translations currently present in the editor, newest last. */
+    fun translatedHistory(): List<TranslatedSpan> = translatedSpans.value
 
     /**
      * Pre-edit buffer: while translation is enabled, typed text does NOT go to the target app.
@@ -390,9 +420,14 @@ class TranslationManager(
                 "tail=<${beforeCursor.takeLast(40)}>"
         }
 
+        // Sentence-by-sentence workflow: the editor may already hold Chinese we produced earlier.
+        // Strip those translated spans first, otherwise the model receives its own output back as
+        // if it were input.
+        beforeCursor = stripTranslatedSpans(beforeCursor)
+
         // Take the trailing sentence *verbatim* — its exact length is what gets deleted when the
         // user accepts a translation.
-        val raw = trailingSentenceRaw(beforeCursor)
+        val raw = textToTranslate(beforeCursor)
         flogError { "yijian: extracted raw=<${raw.takeLast(50)}> len=${raw.length}" }
         if (raw.isBlank() || !hasTranslatableContent(raw, requireTwoWords = false)) {
             flogError {
@@ -649,16 +684,36 @@ class TranslationManager(
      * Returns the trailing sentence of [text] **verbatim** (leading whitespace trimmed only),
      * so the result is always a literal suffix and its length equals the deletion amount.
      */
-    private fun trailingSentenceRaw(text: String): String {
-        if (text.isEmpty()) return text
-        val trimmed = text.trimStart(' ', '\t')
+    /**
+     * Removes translations we previously inserted from [text], leaving only the user's own
+     * (untranslated) content.
+     *
+     * Without this, translating a second sentence re-sends the first sentence's Chinese output
+     * together with the new English, and the model treats the mixture as the thing to translate.
+     */
+    private fun stripTranslatedSpans(text: String): String {
+        var result = text
+        for (span in translatedHistory()) {
+            if (span.translated.isNotEmpty()) {
+                result = result.replace(span.translated, "")
+            }
+        }
+        // Collapse the whitespace left behind by removals.
+        return result.replace(Regex("\\s{2,}"), " ").trim()
+    }
 
-        // Everything the user has typed is short enough to be one thought: translate the whole
-        // thing. Taking only the last sentence here used to silently drop earlier sentences, so a
-        // two-sentence message came back with only the second one translated.
+    /**
+     * Returns the text to send to the model.
+     *
+     * Everything the user has typed goes in one request — no sentence splitting. The model reads
+     * the whole message and decides how to interpret it; carving it up on the client only produced
+     * partial translations. The length cap exists because the API has a hard limit, and when it is
+     * hit the end of the text is kept since that is what the user is still working on.
+     */
+    private fun textToTranslate(text: String): String {
+        val trimmed = text.trimStart(' ', '\t')
         if (trimmed.length <= MAX_TRANSLATE_CHARS) return trimmed
 
-        // Long text: keep the end, which is what the user is currently working on.
         val window = trimmed.takeLast(MAX_TRANSLATE_CHARS)
         val boundaries = charArrayOf('.', '!', '?', '\n', '。', '！', '？', '；', ';')
         var firstBreak = -1

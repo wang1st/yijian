@@ -272,6 +272,7 @@ class ImeController(
             info: FlorisEditorInfo,
         ) {
             translationManager.clearBuffer()
+            translationManager.clearTranslationHistory()
             val newTouchLayerId: K3LayerId
             val keyVariation: KeyVariation
             when (info.inputAttributes.type) {
@@ -682,8 +683,9 @@ class ImeController(
                     translationManager.setError("无法替换原文，请手动清空")
                     return
                 }
+                // Remember the accepted pair so the same sentence is never re-translated.
+                translationManager.rememberTranslation(pending, newText)
                 translationManager.pendingEnglish = null
-                translationManager.clearTranslationMark()
                 translationManager.clearBuffer()
                 translationManager.resetLastCommitted()
                 lastReplacement = ReplacedText(
