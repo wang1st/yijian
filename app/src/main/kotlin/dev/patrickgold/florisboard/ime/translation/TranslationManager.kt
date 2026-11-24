@@ -625,15 +625,27 @@ class TranslationManager(
      */
     private fun trailingSentenceRaw(text: String): String {
         if (text.isEmpty()) return text
+        val trimmed = text.trimStart(' ', '\t')
+
+        // Everything the user has typed is short enough to be one thought: translate the whole
+        // thing. Taking only the last sentence here used to silently drop earlier sentences, so a
+        // two-sentence message came back with only the second one translated.
+        if (trimmed.length <= MAX_TRANSLATE_CHARS) return trimmed
+
+        // Long text: keep the end, which is what the user is currently working on.
+        val window = trimmed.takeLast(MAX_TRANSLATE_CHARS)
         val boundaries = charArrayOf('.', '!', '?', '\n', '。', '！', '？', '；', ';')
-        var last = -1
+        var firstBreak = -1
         for (b in boundaries) {
-            val i = text.lastIndexOf(b)
-            if (i > last) last = i
+            val i = window.indexOf(b)
+            if (i >= 0 && (firstBreak < 0 || i < firstBreak)) firstBreak = i
         }
-        val tail = if (last >= 0) text.substring(last + 1) else text
-        // Remove only leading spaces/tabs; a trailing space is meaningful for the caller.
-        return tail.trimStart(' ', '\t')
+        // Snap to a sentence start only when that keeps most of the window.
+        return if (firstBreak in 0 until (window.length * 2 / 3)) {
+            window.substring(firstBreak + 1).trimStart(' ', '\t')
+        } else {
+            window
+        }
     }
 
     /**
