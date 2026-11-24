@@ -576,13 +576,6 @@ class ImeController(
                 emitEnterKey()
                 return
             }
-            // yijian: in Chinese (pinyin) mode Enter is a plain newline key.
-            if (pinyin.active.value) {
-                // Drop any pending pinyin first so the letters don't linger in the buffer.
-                pinyin.clear()
-                emitEnterKey()
-                return
-            }
             // S1: the text is already in the editor, so Enter always means "translate this".
             if (prefs.translation.enabled.get()) {
                 translationManager.translateNow(state)

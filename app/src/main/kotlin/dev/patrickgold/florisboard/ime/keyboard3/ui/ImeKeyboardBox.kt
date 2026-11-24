@@ -280,7 +280,14 @@ private fun ImeKeyboardKeyBox(
         }
     }
     // TODO some keys an be disabled (copy cut etc)
-    val selector = if (isPressed) SnyggSelector.PRESSED else SnyggSelector.NONE
+    val selector = when {
+        isPressed -> SnyggSelector.PRESSED
+        // The pinyin key reuses the theme's own pressed style while Chinese input is active, so
+        // the "switched on" look adapts to day and night themes (the old fixed black overlay was
+        // invisible on dark keys).
+        pinyinActive && isPinyinKey -> SnyggSelector.PRESSED
+        else -> SnyggSelector.NONE
+    }
     val multiTapKeys = touchKey.multiTapKeys
 
     SnyggBox(
@@ -289,13 +296,6 @@ private fun ImeKeyboardKeyBox(
         selector = selector,
         modifier = modifier,
     ) {
-        if (pinyinActive && isPinyinKey) {
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .background(Color.Black.copy(alpha = 0.18f)),
-            )
-        }
         Row(
             modifier = Modifier
                 .align(Alignment.Center)
