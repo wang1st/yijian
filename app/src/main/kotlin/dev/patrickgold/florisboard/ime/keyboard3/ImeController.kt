@@ -141,18 +141,23 @@ class ImeController(
     fun ensureImeSwitchAction() {
         scope.launch {
             val arrangement = prefs.smartbar.actionArrangement.get()
-            val already = arrangement.dynamicActions.any {
-                it is QuickAction.InsertK3Descriptor && it.descriptor == ImeActions.ShowInputMethodPicker
-            }
-            if (already) return@launch
-            prefs.smartbar.actionArrangement.set(
-                arrangement.copy(
-                    dynamicActions = listOf(
-                        QuickAction.InsertK3Descriptor(ImeActions.ShowInputMethodPicker),
-                    ) + arrangement.dynamicActions,
+            val sticky = arrangement.stickyAction
+
+            // The right-most toolbar slot should switch IMEs (one tap = previous keyboard).
+            // Existing installs still carry the old voice-input action there.
+            val isVoiceSticky = sticky is QuickAction.InsertK3Descriptor &&
+                sticky.descriptor == ImeActions.ExternalVoiceInput
+            if (isVoiceSticky) {
+                prefs.smartbar.actionArrangement.set(
+                    arrangement.copy(
+                        stickyAction = QuickAction.InsertK3Descriptor(ImeActions.SwitchToPrevInputMethod),
+                    )
                 )
-            )
-            flogError { "yijian: added input-method switch to the smartbar" }
+                flogError { "yijian: sticky toolbar action switched from voice to IME switch" }
+                return@launch
+            }
+
+            // Already replaced, or the user chose something else there: leave it alone.
         }
     }
 

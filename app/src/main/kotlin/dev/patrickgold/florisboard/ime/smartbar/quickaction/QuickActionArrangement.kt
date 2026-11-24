@@ -89,7 +89,10 @@ data class QuickActionArrangement(
 
     companion object {
         val Default = QuickActionArrangement(
-            stickyAction = QuickAction.InsertK3Descriptor(ImeActions.ExternalVoiceInput),
+            // The right-most toolbar slot switches input methods: one tap jumps straight to the
+            // previous keyboard (no dialog), which is the documented Android pattern. Voice input
+            // is still on the keyboard itself (long-press the space bar).
+            stickyAction = QuickAction.InsertK3Descriptor(ImeActions.SwitchToPrevInputMethod),
             dynamicActions = listOf(
                 // First in the row: switching to another IME and back is a frequent action.
                 QuickAction.InsertK3Descriptor(ImeActions.ShowInputMethodPicker),
