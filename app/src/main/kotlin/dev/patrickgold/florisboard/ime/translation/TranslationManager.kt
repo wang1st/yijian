@@ -153,9 +153,7 @@ class TranslationManager(
     }
 
     /** Strips whitespace and punctuation, leaving only content characters. */
-    private fun core(s: String): String = buildString {
-        for (ch in s) if (!ch.isWhitespace() && !ch.isPunctuation()) append(ch)
-    }
+    private fun core(s: String): String = s.filter { it.isLetterOrDigit() }
 
     /** Records that [source] has been translated to [translated]. */
     fun rememberTranslation(source: String, translated: String) {
