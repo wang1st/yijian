@@ -152,6 +152,8 @@ class FlorisApplication : Application() {
             // Preferences are usable only after the store init above completes
             runCatching { imeController.ensureImeSwitchAction() }
                 .onFailure { Log.e("YIJIAN", "smartbar migration failed", it) }
+            runCatching { imeController.removeDuplicateImeSwitch() }
+                .onFailure { Log.e("YIJIAN", "duplicate switch cleanup failed", it) }
         }
         clipboardManager.value.initializeForContext(this)
         DictionaryManager.init(this)

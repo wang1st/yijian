@@ -161,6 +161,27 @@ class ImeController(
         }
     }
 
+    /**
+     * Removes a stray input-method switch from the dynamic row.
+     *
+     * Both the sticky slot and the dynamic row used to carry one, so the toolbar showed two globe
+     * buttons. Only the sticky one (far right) is kept.
+     */
+    fun removeDuplicateImeSwitch() {
+        scope.launch {
+            val arrangement = prefs.smartbar.actionArrangement.get()
+            val filtered = arrangement.dynamicActions.filterNot {
+                it is QuickAction.InsertK3Descriptor &&
+                    (it.descriptor == ImeActions.ShowInputMethodPicker ||
+                        it.descriptor == ImeActions.SwitchToPrevInputMethod ||
+                        it.descriptor == ImeActions.SwitchToNextInputMethod)
+            }
+            if (filtered.size == arrangement.dynamicActions.size) return@launch
+            prefs.smartbar.actionArrangement.set(arrangement.copy(dynamicActions = filtered))
+            flogError { "yijian: removed duplicate IME switch from the action row" }
+        }
+    }
+
     /** True while the keyboard is in Chinese (pinyin) mode. */
     val pinyinActive get() = pinyin.active
 
@@ -674,7 +695,8 @@ class ImeController(
                 val tail = liveTextBefore(pending.length + 20)
                 // Compare with whitespace normalised: the editor may hold a double space that a
                 // cleaned-up request copy does not, which used to abort a perfectly good replace.
-                if (!sameIgnoringSpaces(tail, pending)) {
+                val matchLen = matchingSuffixLength(tail, pending)
+                if (matchLen == null || matchLen <= 0) {
                     flogError {
                         "yijian: refuse replace. pending=<${pending.takeLast(50)}> " +
                             "tail=<${tail.takeLast(50)}>"
@@ -683,7 +705,9 @@ class ImeController(
                     translationManager.setError("原文已改动，未替换")
                     return
                 }
-                if (!replaceViaSelection(pending, newText)) {
+                // Delete what the editor actually holds, not what we had in the request copy.
+                val actualSpan = tail.takeLast(matchLen)
+                if (!replaceViaSelection(actualSpan, newText)) {
                     translationManager.pendingEnglish = null
                     translationManager.setError("无法替换原文，请手动清空")
                     return
@@ -733,9 +757,32 @@ class ImeController(
          * True when [tail] ends with [target] once runs of whitespace are collapsed. Editors differ
          * from our request copy only in spacing; that must not block a replacement.
          */
-        private fun sameIgnoringSpaces(tail: String, target: String): Boolean {
-            fun squash(s: String) = s.replace(Regex("\\s+"), " ").trim()
-            return squash(tail).endsWith(squash(target))
+        /**
+         * Length of the suffix of [tail] that corresponds to [target], ignoring whitespace and
+         * punctuation differences between them.
+         *
+         * Returns null when they do not match. The returned length is measured in [tail] characters
+         * so it can be used to delete exactly the right span - comparing loosely but deleting by
+         * `target.length` deleted the wrong number of characters whenever spacing differed.
+         */
+        private fun matchingSuffixLength(tail: String, target: String): Int? {
+            fun isCore(ch: Char) = !ch.isWhitespace() && !ch.isPunctuation()
+            val coreTarget = target.filter(::isCore)
+            if (coreTarget.isEmpty()) return null
+
+            // Walk backwards over tail, counting only core characters, until we have consumed as
+            // many core characters as the target has.
+            var needed = coreTarget.length
+            var i = tail.length - 1
+            while (i >= 0 && needed > 0) {
+                if (isCore(tail[i])) needed--
+                i--
+            }
+            if (needed > 0) return null
+            // Include any trailing punctuation/whitespace that belongs to this sentence.
+            var start = i + 1
+            while (start < tail.length && isCore(tail[start])) start++
+            return tail.length - start
         }
 
         /**

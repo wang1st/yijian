@@ -94,8 +94,8 @@ data class QuickActionArrangement(
             // is still on the keyboard itself (long-press the space bar).
             stickyAction = QuickAction.InsertK3Descriptor(ImeActions.SwitchToPrevInputMethod),
             dynamicActions = listOf(
-                // First in the row: switching to another IME and back is a frequent action.
-                QuickAction.InsertK3Descriptor(ImeActions.ShowInputMethodPicker),
+                // IME switching lives in the sticky slot at the end of the row; keeping it here
+                // too produced two globe buttons.
                 QuickAction.InsertK3Descriptor(ImeActions.ToggleFloatingWindow),
                 QuickAction.InsertK3Descriptor(ImeActions.ToggleResizeMode),
                 QuickAction.InsertK3Descriptor(ImeActions.Undo),
