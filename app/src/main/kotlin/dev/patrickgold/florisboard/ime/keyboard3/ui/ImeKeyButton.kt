@@ -155,13 +155,13 @@ fun ImeKeyButton(
             },
         contentAlignment = Alignment.Center,
     ) {
-        // Mode indicator: the pinyin key is tinted while Chinese input is active, so the current
-        // language is readable at a glance instead of being implied by the key label.
+        // Mode indicator: while pinyin input is active the key carries the same tint a pressed
+        // key has, so it reads as "this mode is switched on" rather than as a coloured widget.
         if (pinyinActive && output == dev.patrickgold.florisboard.ime.keyboard3.ImeActions.TogglePinyin) {
             Box(
                 modifier = Modifier
                     .matchParentSize()
-                    .background(Color(0xFF2E7D5B).copy(alpha = 0.55f)),
+                    .background(Color.Black.copy(alpha = 0.18f)),
             )
         }
         content(display)
