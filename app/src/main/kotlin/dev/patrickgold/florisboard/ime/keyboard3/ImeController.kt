@@ -667,9 +667,9 @@ class ImeController(
             // real editor content.
             if (pending != null && pending.isNotEmpty()) {
                 val tail = liveTextBefore(pending.length + 20)
-                if (!tail.endsWith(pending)) {
-                    // The editor no longer holds what we translated. Inserting would produce
-                    // duplicated text (the old bug), so refuse and tell the user instead.
+                // Compare with whitespace normalised: the editor may hold a double space that a
+                // cleaned-up request copy does not, which used to abort a perfectly good replace.
+                if (!sameIgnoringSpaces(tail, pending)) {
                     flogError {
                         "yijian: refuse replace. pending=<${pending.takeLast(50)}> " +
                             "tail=<${tail.takeLast(50)}>"
@@ -724,6 +724,15 @@ class ImeController(
          *
          * @return true when the replacement is verified in place.
          */
+        /**
+         * True when [tail] ends with [target] once runs of whitespace are collapsed. Editors differ
+         * from our request copy only in spacing; that must not block a replacement.
+         */
+        private fun sameIgnoringSpaces(tail: String, target: String): Boolean {
+            fun squash(s: String) = s.replace(Regex("\\s+"), " ").trim()
+            return squash(tail).endsWith(squash(target))
+        }
+
         /**
          * Replaces the [old] text immediately before the cursor with [replacement].
          *

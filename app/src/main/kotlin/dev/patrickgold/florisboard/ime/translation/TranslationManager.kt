@@ -698,8 +698,10 @@ class TranslationManager(
                 result = result.replace(span.translated, "")
             }
         }
-        // Collapse the whitespace left behind by removals.
-        return result.replace(Regex("\\s{2,}"), " ").trim()
+        // Do NOT normalise whitespace here. The result is later compared against the editor with
+        // endsWith() to locate the span to replace, so any collapsing of double spaces makes the
+        // comparison fail and the replacement is refused ("原文已改动，未替换").
+        return result.trimEnd()
     }
 
     /**
