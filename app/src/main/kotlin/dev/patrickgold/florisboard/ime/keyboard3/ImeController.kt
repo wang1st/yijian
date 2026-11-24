@@ -65,7 +65,6 @@ import org.k3lp.lib.text.K3Descriptor
 import org.k3lp.lib.text.K3String
 import org.k3lp.lib.text.K3StringOrDescriptor
 import org.k3lp.lib.text.asK3String
-import org.k3lp.lib.text.toText
 import org.k3lp.model.K3Model
 import org.k3lp.model.layer.K3LayerId
 import org.k3lp.runtime.K3Content
