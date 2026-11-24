@@ -148,6 +148,9 @@ class TranslationManager(
     val status = MutableStateFlow(Status.IDLE)
     val errorMessage = MutableStateFlow<String?>(null)
 
+    /** Surfaces a user-visible error from outside (e.g. the replace guard in ImeController). */
+    fun setError(message: String) = setStatus(Status.ERROR, message)
+
     private fun setStatus(newStatus: Status, error: String? = null) {
         errorMessage.value = error
         status.value = newStatus
@@ -352,15 +355,16 @@ class TranslationManager(
             return
         }
 
-        // S1: the text lives in the editor now. Read what precedes the cursor and translate the
-        // trailing sentence; remembering it lets a candidate replace exactly that span.
-        val beforeCursor = state.editor.getSurroundingText(500, 0).textBefore
-        val extracted = extractTail(beforeCursor)
-        if (extracted == null) {
+        // S1: text lives in the editor. Take the trailing sentence *verbatim* — no trimming —
+        // because its exact length is what gets deleted when the user accepts a translation.
+        val beforeCursor = state.editor.getSurroundingText(MAX_TRANSLATE_CHARS + 40, 0).textBefore
+        val raw = trailingSentenceRaw(beforeCursor)
+        if (raw.isBlank() || !hasTranslatableContent(raw, requireTwoWords = false)) {
             setStatus(Status.ERROR, "没有可翻译的英文")
             return
         }
-        translateSentence(extracted.first, state, extracted.second)
+        val context = beforeCursor.dropLast(raw.length).takeLast(200)
+        translateSentence(raw, state, context)
     }
 
     private fun translateSentence(
@@ -594,6 +598,23 @@ class TranslationManager(
 
 
     /**
+     * Returns the trailing sentence of [text] **verbatim** (leading whitespace trimmed only),
+     * so the result is always a literal suffix and its length equals the deletion amount.
+     */
+    private fun trailingSentenceRaw(text: String): String {
+        if (text.isEmpty()) return text
+        val boundaries = charArrayOf('.', '!', '?', '\n', '。', '！', '？', '；', ';')
+        var last = -1
+        for (b in boundaries) {
+            val i = text.lastIndexOf(b)
+            if (i > last) last = i
+        }
+        val tail = if (last >= 0) text.substring(last + 1) else text
+        // Remove only leading spaces/tabs; a trailing space is meaningful for the caller.
+        return tail.trimStart(' ', '\t')
+    }
+
+    /**
      * Returns the trailing sentence of [text] — everything after the last sentence boundary.
      * Used to pin down exactly which slice of the editor a translation should replace.
      */
@@ -639,17 +660,12 @@ class TranslationManager(
             )
         }
         if (trackPending) {
-            // Take the text to replace straight from the editor instead of reconstructing it from
-            // `english`. `english` is what was *sent* (already trimmed), and the model may return
-            // a spelling-corrected form; neither is guaranteed to be a literal suffix of what the
-            // user actually typed. The editor tail is the only trustworthy source.
-            val beforeCursor = withContext(Dispatchers.Main) {
-                imeController.snapshotState().editor.getSurroundingText(MAX_TRANSLATE_CHARS + 40, 0)
-                    .textBefore
-            }
-            val tail = extractTrailingSentence(beforeCursor)
-            pendingEnglish = tail
-            flogError { "yijian: pending=<${tail.takeLast(60)}> len=${tail.length}" }
+            // `english` is exactly what the caller read from the editor and sent to the model, so
+            // its length is the number of characters to delete on replace. No boundary guessing:
+            // earlier attempts re-derived the span from the live text and ended up swallowing
+            // neighbouring sentences or already-translated Chinese.
+            pendingEnglish = english
+            flogError { "yijian: pending=<${english.takeLast(50)}> len=${english.length}" }
         }
         // Offer the interpretations in the smartbar
         val target = pendingEnglish.orEmpty()

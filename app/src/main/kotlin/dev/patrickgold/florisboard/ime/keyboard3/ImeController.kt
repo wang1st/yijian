@@ -635,16 +635,16 @@ class ImeController(
             // InputConnection (not the cached surrounding text) so the comparison sees the
             // real editor content.
             if (pending != null && pending.isNotEmpty()) {
-                val tail = liveTextBefore(pending.length + 40)
+                val tail = liveTextBefore(pending.length + 20)
                 if (!tail.endsWith(pending)) {
-                    // The user edited the sentence while the request was in flight. Replacing now
-                    // would delete the wrong characters, so delete nothing and just insert.
+                    // The editor no longer holds what we translated. Inserting would produce
+                    // duplicated text (the old bug), so refuse and tell the user instead.
                     flogError {
-                        "yijian: tail mismatch, inserting instead of replacing. " +
-                            "pending=<${pending.takeLast(40)}> tail=<${tail.takeLast(40)}>"
+                        "yijian: refuse replace. pending=<${pending.takeLast(50)}> " +
+                            "tail=<${tail.takeLast(50)}>"
                     }
-                    emitTextDirect(newText.asK3String())
                     translationManager.pendingEnglish = null
+                    translationManager.setError("原文已改动，未替换")
                     return
                 }
                 state.editor.deleteSurroundingText(pending.length, 0)
