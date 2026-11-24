@@ -142,19 +142,28 @@ class TranslationManager(
      * Pressing Enter twice on the same sentence must not call the model again.
      */
     fun isAlreadyTranslated(text: String): Boolean {
-        val needle = text.trim()
+        val needle = core(text)
         if (needle.isEmpty()) return false
         // The pending sentence (candidates still on screen) is the common case.
-        val pendingSource = translatedSource?.trim()
-        if (pendingSource != null && pendingSource == needle) return true
-        // Otherwise it may already have been accepted into the editor earlier.
-        return translatedSpans.value.any { it.source.trim() == needle }
+        translatedSource?.let { if (core(it) == needle) return true }
+        // Otherwise it may already have been accepted into the editor earlier. Compare on the
+        // meaningful characters only: the editor's copy and ours differ in spacing/punctuation,
+        // and an exact comparison let the same sentence be sent to the model again and again.
+        return translatedSpans.value.any { core(it.source) == needle }
+    }
+
+    /** Strips whitespace and punctuation, leaving only content characters. */
+    private fun core(s: String): String = buildString {
+        for (ch in s) if (!ch.isWhitespace() && !ch.isPunctuation()) append(ch)
     }
 
     /** Records that [source] has been translated to [translated]. */
     fun rememberTranslation(source: String, translated: String) {
         translatedSource = source
         translatedSpans.value = translatedSpans.value + TranslatedSpan(translated, source)
+        // The editor now holds the translation, so the text before the cursor no longer matches
+        // what is pending: reset the anchor to "none" until the next request records a new one.
+        pendingStartPos = null
     }
 
     /** Forgets the 「already translated」 marker, e.g. after the text was replaced or cleared. */
@@ -207,6 +216,14 @@ class TranslationManager(
     enum class Status { IDLE, TRANSLATING, ERROR }
     val status = MutableStateFlow(Status.IDLE)
     val errorMessage = MutableStateFlow<String?>(null)
+
+    /** Clears any translation error so the panel can close. */
+    fun clearStatus() = setStatus(Status.IDLE)
+
+    /** Clears the voice banner (e.g. 「语音识别失败」). */
+    fun clearVoiceStatus() {
+        voiceStatus.value = null
+    }
 
     /** Surfaces a user-visible error from outside (e.g. the replace guard in ImeController). */
     fun setError(message: String) = setStatus(Status.ERROR, message)
@@ -456,9 +473,11 @@ class TranslationManager(
             return
         }
 
-        // Record where the to-be-translated span begins so the replacement can target
-        // [pendingStartPos, cursor] by position rather than by string matching.
-        pendingStartPos = state.content.selection.start - raw.length
+        // Record where the to-be-translated span begins. `state.content.selection.start` is a
+        // cached value; the live cursor position is inferred from how much text actually precedes
+        // it, which is what the InputConnection just returned.
+        val liveCursor = beforeCursor.length.coerceAtLeast(0)
+        pendingStartPos = (liveCursor - raw.length).coerceAtLeast(0)
 
         val context = beforeCursor.dropLast(raw.length).takeLast(200)
         translateSentence(raw, state, context)

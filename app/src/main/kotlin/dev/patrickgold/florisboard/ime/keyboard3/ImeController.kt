@@ -458,8 +458,13 @@ class ImeController(
         fun translationClearAll() {
             translationManager.clearBuffer()
             translationManager.pendingEnglish = null
+            translationManager.pendingStartPos = null
             translationManager.clearTranslationMark()
             translationManager.resetLastCommitted()
+            // Also drop any error/voice banner, otherwise the panel stays on screen after a failed
+            // recognition and 清除 looks like it did nothing.
+            translationManager.clearStatus()
+            translationManager.clearVoiceStatus()
         }
 
         override fun emitDescriptor(descriptor: K3Descriptor) {
