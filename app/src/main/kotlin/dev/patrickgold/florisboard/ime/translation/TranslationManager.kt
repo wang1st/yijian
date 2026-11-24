@@ -21,7 +21,6 @@ import dev.patrickgold.florisboard.app.FlorisPreferenceStore
 import dev.patrickgold.florisboard.ime.editor.InputAttributes
 import dev.patrickgold.florisboard.ime.keyboard3.ImeController
 import dev.patrickgold.florisboard.ime.keyboard3.ImeState
-import dev.patrickgold.florisboard.ime.nlp.NlpManager
 import dev.patrickgold.florisboard.ime.nlp.SuggestionCandidate
 import dev.patrickgold.florisboard.ime.nlp.SuggestionProvider
 import dev.patrickgold.florisboard.lib.devtools.flogError
@@ -47,11 +46,9 @@ data class TranslationSuggestionCandidate(
     override val text: CharSequence,
     val correctedEnglish: String,
     val note: String,
-    /**
-     * The exact editor text this translation replaces. Carried on the candidate itself so a
-     * click never depends on global state that a later translation may have overwritten.
-     */
-    val replaceTarget: String = "",
+    val requestId: Long,
+    /** A null range denotes a voice draft, which has never been inserted in the editor. */
+    val range: TranslationRange?,
     val corrections: List<CorrectionItem> = emptyList(),
     override val confidence: Double = 1.0,
     override val isEligibleForAutoCommit: Boolean = false,
@@ -81,113 +78,46 @@ data class TranslationResult(
     val corrections: List<CorrectionItem> = emptyList(),
 )
 
-/**
- * yijian AI translation pipeline: watches for sentence-ending punctuation, sends the
- * (possibly broken) English sentence to DeepSeek together with surrounding context,
- * then replaces the English with the best Chinese translation and offers the other
- * interpretations as smartbar candidates.
- */
+/** Translates the current editor range or a voice draft on explicit request. */
 class TranslationManager(
     private val imeController: ImeController,
 ) {
     private val prefs by FlorisPreferenceStore
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    /**
-     * Resolved lazily: [NlpManager]'s constructor reads [FlorisApplication.imeController],
-     * so it must not be instantiated while [FlorisApplication.onCreate] is still running.
-     */
-    private val nlpManager: NlpManager
-        get() = dev.patrickgold.florisboard.FlorisApplication.getHack().nlpManager.value
+    val translationToCopy = MutableStateFlow<String?>(null)
+    val candidates = MutableStateFlow<List<TranslationSuggestionCandidate>>(emptyList())
+    private val accepted = mutableListOf<TranslationRange>()
+    @Volatile private var requestId = 0L
 
-    @Volatile private var inFlight = false
-
-    /** The most recent translation auto-committed by us; used to swap it for an alternative. */
-    @Volatile internal var lastCommitted: String? = null
-
-    /**
-     * English text (including any typed trailing punctuation) that is waiting in the editor to be
-     * replaced once the user picks a translation from the candidates list.
-     */
-    @Volatile internal var pendingEnglish: String? = null
-
-    /**
-     * Cursor position where the text-to-translate began.
-     *
-     * The replacement target is the span [pendingStartPos, cursor] at click time - an exact
-     * location rather than a string to find. String comparisons kept failing on spacing or
-     * spelling-correction differences; positions are factual and cannot drift in that way.
-     * Set when a request is issued, cleared when the span is accepted or the user cancels.
-     */
-    @Volatile internal var pendingStartPos: Int? = null
-
-    /**
-     * Every piece of text that is currently in the editor *in translation form*: the range it
-     * occupies and the translation now sitting there.
-     *
-     * Users translate sentence by sentence, so a single "last translated" marker kept getting
-     * overwritten and earlier work lost. Keeping the list lets us (a) skip work that is already
-     * done, (b) know which spans are translations rather than source text.
-     */
-    internal data class TranslatedSpan(val translated: String, val source: String)
-
-    private val translatedSpans = MutableStateFlow<List<TranslatedSpan>>(emptyList())
-
-    /** Text we already translated and whose translation is currently on screen. */
-    @Volatile internal var translatedSource: String? = null
-
-    /**
-     * True when [text] was translated and its translation has not been replaced since.
-     *
-     * Pressing Enter twice on the same sentence must not call the model again.
-     */
-    fun isAlreadyTranslated(text: String): Boolean {
-        val needle = core(text)
-        if (needle.isEmpty()) return false
-        // The pending sentence (candidates still on screen) is the common case.
-        translatedSource?.let { if (core(it) == needle) return true }
-        // Otherwise it may already have been accepted into the editor earlier. Compare on the
-        // meaningful characters only: the editor's copy and ours differ in spacing/punctuation,
-        // and an exact comparison let the same sentence be sent to the model again and again.
-        return translatedSpans.value.any { core(it.source) == needle }
+    /** Called inside the controller state update, like publication and acceptance. */
+    fun dismissRequest() {
+        requestId++
+        pendingRange = null
+        translationToCopy.value = null
+        candidates.value = emptyList()
+        clearBuffer()
     }
 
-    /** Strips whitespace and punctuation, leaving only content characters. */
-    private fun core(s: String): String = s.filter { it.isLetterOrDigit() }
-
-    /** Records that [source] has been translated to [translated]. */
-    fun rememberTranslation(source: String, translated: String) {
-        translatedSource = source
-        translatedSpans.value = translatedSpans.value + TranslatedSpan(translated, source)
-        // The editor now holds the translation, so the text before the cursor no longer matches
-        // what is pending: reset the anchor to "none" until the next request records a new one.
-        pendingStartPos = null
+    fun resetEditor() {
+        dismissRequest()
+        accepted.clear()
+        clearUndo()
+        clearVoiceStatus()
     }
 
-    /** Forgets the 「already translated」 marker, e.g. after the text was replaced or cleared. */
-    fun clearTranslationMark() {
-        translatedSource = null
+    fun isCurrent(candidate: TranslationSuggestionCandidate) =
+        candidate.requestId == requestId && candidate in candidates.value
+
+    fun rememberTranslation(range: TranslationRange, translation: String) {
+        accepted.removeAll { it.end > range.start }
+        accepted.add(range.copy(text = translation))
     }
 
-    /** Drops all records of accepted translations, used when the editor is reset. */
-    fun clearTranslationHistory() {
-        translatedSource = null
-        translatedSpans.value = emptyList()
-    }
-
-    /** The translations currently present in the editor, newest last. */
-    internal fun translatedHistory(): List<TranslatedSpan> = translatedSpans.value
-
-    /**
-     * Pre-edit buffer: while translation is enabled, typed text does NOT go to the target app.
-     * It accumulates here and is surfaced via [preeditText] in the IME panel; it only reaches
-     * the editor when the user picks a translation or dismisses the panel.
-     */
     private val readTimeoutSeconds = 60
 
     /** Inputs at or below this length are translated in full rather than tail-only. */
     private val MAX_TRANSLATE_CHARS = 400
-    private val MIN_TRANSLATE_CHARS = 8
     private val MIN_LATIN_LETTERS = 2
     private val MIN_CJK_CHARS = 2
 
@@ -242,8 +172,12 @@ class TranslationManager(
         if (!prefs.translation.enabled.get()) return false
         val info = state.editor.info
         if (info.isRawInputEditor) return false
-        if (info.inputAttributes.variation == InputAttributes.Variation.PASSWORD) return false
-        return true
+        return when (info.inputAttributes.variation) {
+            InputAttributes.Variation.PASSWORD,
+            InputAttributes.Variation.VISIBLE_PASSWORD,
+            InputAttributes.Variation.WEB_PASSWORD -> false
+            else -> true
+        }
     }
 
     fun clearBuffer() {
@@ -282,28 +216,27 @@ class TranslationManager(
         return false
     }
 
-    /** Monotonic id so a slow request cannot overwrite a newer one's candidates. */
-    @Volatile
-    private var requestTicket = 0
-
-    /** Characters typed since the last translation, used to locate the sentence to replace. */
     private var trackedLength = 0
 
-    /** Set while an accepted translation can still be undone (restores the English). */
-    val undoable = MutableStateFlow<String?>(null)
+    class Undo(val range: TranslationRange, val original: String)
+    val undoable = MutableStateFlow<Undo?>(null)
 
-    fun offerUndo(original: String) {
-        undoable.value = original
+    fun offerUndo(range: TranslationRange, original: String) {
+        val undo = Undo(range, original)
+        undoable.value = undo
         scope.launch {
             kotlinx.coroutines.delay(5000)
-            undoable.value = null
+            undoable.compareAndSet(undo, null)
         }
+    }
+
+    fun forgetTranslation(range: TranslationRange) {
+        accepted.remove(range)
     }
 
     fun clearUndo() {
         undoable.value = null
     }
-
 
     /**
      * Legacy hook from the non-pre-edit path. Intentionally a no-op: translation is manual only,
@@ -314,9 +247,6 @@ class TranslationManager(
         // no-op
     }
 
-    fun resetLastCommitted() {
-        lastCommitted = null
-    }
 
     // ---- Voice input ----------------------------------------------------------------
 
@@ -344,6 +274,8 @@ class TranslationManager(
     /** Stops recording, transcribes what was said and runs it through the translation flow. */
     fun stopVoiceAndTranslate() {
         if (!recorder.isRecording) return
+        val ticket = requestId
+        val editor = imeController.snapshotState().editor
         scope.launch {
             voiceBusy.value = true
             voiceStatus.value = "识别中…"
@@ -361,14 +293,15 @@ class TranslationManager(
                     voiceStatus.value = "没听清，再说一次"
                     return@launch
                 }
-                // Show what was heard, then translate it like typed English.
-                buffer.setLength(0)
-                buffer.append(said)
-                preeditText.value = said
-                voiceStatus.value = null
-                val state = imeController.snapshotState()
-                val context = state.editor.getSurroundingText(300, 0).textBefore.takeLast(200)
-                translateSentence(said, state, context, voiceMode = true)
+                imeController.updateState {
+                    if (ticket != requestId || state.editor !== editor || !preeditActive(state)) return@updateState
+                    dismissRequest()
+                    buffer.append(said)
+                    preeditText.value = said
+                    voiceStatus.value = null
+                    val context = editor.getSurroundingText(300, 0).textBefore.takeLast(200)
+                    translateSentence(said, context, range = null)
+                }
             } catch (e: SpeechException) {
                 voiceStatus.value = e.message
                 setStatus(Status.ERROR, e.message ?: "语音识别失败")
@@ -411,104 +344,49 @@ class TranslationManager(
         }
     }
 
-    /**
-     * Manual translation trigger (the 「译」 key). With a non-empty pre-edit buffer the buffered
-     * sentence is translated; otherwise the last sentence already in the editor is used.
-     */
-    fun translateNow() {
-        // Every early exit reports why, otherwise pressing Enter looks like a dead key.
-        if (!prefs.translation.enabled.get()) {
-            setStatus(Status.ERROR, "AI 翻译未开启")
+    /** Capture the source verbatim, including its position in the active editor. */
+    fun translateNow(state: ImeState) {
+        if (!preeditActive(state)) {
+            dismissRequest()
+            setError("当前输入框未开启翻译")
             return
         }
-        if (inFlight) return
-
-        val state = imeController.snapshotState()
-        val info = state.editor.info
-        if (info.isRawInputEditor || info.inputAttributes.variation == InputAttributes.Variation.PASSWORD) {
-            setStatus(Status.ERROR, "当前输入框不支持翻译")
+        val window = state.editor.ic.get()?.translationWindow(MAX_TRANSLATE_CHARS + 40)
+        if (window == null || window.selected.isNotEmpty()) {
+            dismissRequest()
+            setError(if (window == null) "读不到光标位置，请重新点一下输入框" else "请将光标放在要翻译的文字末尾")
             return
         }
-
-        // Read first, then fall back. Finalising the composition unconditionally used to commit
-        // the trailing word and shift the cursor, so the subsequent read came back stale and the
-        // request reported "nothing to translate". Only finish composing when the first read
-        // genuinely comes back empty.
-        var beforeCursor = state.editor.getSurroundingText(MAX_TRANSLATE_CHARS + 40, 0).textBefore
-        if (beforeCursor.isBlank()) {
-            state.editor.ic.get()?.finishComposingText()
-            beforeCursor = state.editor.getSurroundingText(MAX_TRANSLATE_CHARS + 40, 0).textBefore
-        }
-
-        flogError {
-            "yijian: read ${beforeCursor.length} chars, head=<${beforeCursor.take(40)}> " +
-                "tail=<${beforeCursor.takeLast(40)}>"
-        }
-
-        // Sentence-by-sentence workflow: the editor may already hold Chinese we produced earlier.
-        // Strip those translated spans first, otherwise the model receives its own output back as
-        // if it were input.
-        beforeCursor = stripTranslatedSpans(beforeCursor)
-
-        // Take the trailing sentence *verbatim* — its exact length is what gets deleted when the
-        // user accepts a translation.
-        val raw = textToTranslate(beforeCursor)
-        flogError { "yijian: extracted raw=<${raw.takeLast(50)}> len=${raw.length}" }
-        if (raw.isBlank() || !hasTranslatableContent(raw, requireTwoWords = false)) {
-            flogError {
-                "yijian: nothing to translate. read=${beforeCursor.length} chars, " +
-                    "tail=<${raw.takeLast(60)}> tailLen=${raw.length}"
-            }
-            setStatus(
-                Status.ERROR,
-                if (beforeCursor.isEmpty()) "读不到输入框内容，重试一次" else "没有可翻译的英文",
-            )
+        val raw = textToTranslate(window.untranslatedSuffix(accepted))
+        if (!hasTranslatableContent(raw, requireTwoWords = false)) {
+            dismissRequest()
+            setError("光标前没有待翻译的文字")
             return
         }
-        // Pressing Enter again on the same unpublished sentence must not re-request it.
-        if (isAlreadyTranslated(raw)) {
-            flogError { "yijian: already translated, reusing candidates" }
-            return
-        }
-
-        // Record where the to-be-translated span begins. `state.content.selection.start` is a
-        // cached value; the live cursor position is inferred from how much text actually precedes
-        // it, which is what the InputConnection just returned.
-        val liveCursor = beforeCursor.length.coerceAtLeast(0)
-        pendingStartPos = (liveCursor - raw.length).coerceAtLeast(0)
-
-        val context = beforeCursor.dropLast(raw.length).takeLast(200)
-        translateSentence(raw, state, context)
+        val range = TranslationRange(window.start - raw.length, raw)
+        if (pendingRange == range && (status.value == Status.TRANSLATING || candidates.value.isNotEmpty())) return
+        dismissRequest()
+        pendingRange = range
+        translateSentence(raw, window.before.dropLast(raw.length).takeLast(200), range)
     }
 
-    private fun translateSentence(
-        english: String,
-        state: ImeState,
-        givenContext: String? = null,
-        voiceMode: Boolean = false,
-    ) {
-        val myTicket = ++requestTicket
-        if (inFlight) return
-        val context = givenContext ?: state.editor.getSurroundingText(300, 0).textBefore.takeLast(200)
-        inFlight = true
+    private var pendingRange: TranslationRange? = null
+
+    private fun translateSentence(english: String, context: String, range: TranslationRange?) {
+        val ticket = requestId
         setStatus(Status.TRANSLATING)
         scope.launch {
             try {
-                val result = withContext(Dispatchers.IO) { callApiBlocking(english, context, voiceMode) }
-                if (myTicket != requestTicket) {
-                    // A newer request superseded this one; its candidates would carry a stale
-                    // replace target, so drop the result instead of showing it.
-                    flogError { "yijian: dropping stale result (ticket $myTicket != $requestTicket)" }
-                    return@launch
+                val result = withContext(Dispatchers.IO) { callApiBlocking(english, context, voiceMode = range == null) }
+                imeController.updateState {
+                    if (ticket != requestId) return@updateState
+                    applyTranslation(english, result, range, ticket)
+                    setStatus(Status.IDLE)
                 }
-                // The English is already in the editor, so a candidate click must replace it.
-                applyTranslation(english, null, result, trackPending = true)
-                setStatus(Status.IDLE)
             } catch (e: Exception) {
-                flogError { "yijian translation failed: ${e.message}" }
-                setStatus(Status.ERROR, humanizeError(e))
-            } finally {
-                inFlight = false
+                imeController.updateState {
+                    if (ticket == requestId) setError(humanizeError(e))
+                }
             }
         }
     }
@@ -712,30 +590,6 @@ class TranslationManager(
 
 
     /**
-     * Returns the trailing sentence of [text] **verbatim** (leading whitespace trimmed only),
-     * so the result is always a literal suffix and its length equals the deletion amount.
-     */
-    /**
-     * Removes translations we previously inserted from [text], leaving only the user's own
-     * (untranslated) content.
-     *
-     * Without this, translating a second sentence re-sends the first sentence's Chinese output
-     * together with the new English, and the model treats the mixture as the thing to translate.
-     */
-    private fun stripTranslatedSpans(text: String): String {
-        var result = text
-        for (span in translatedHistory()) {
-            if (span.translated.isNotEmpty()) {
-                result = result.replace(span.translated, "")
-            }
-        }
-        // Do NOT normalise whitespace here. The result is later compared against the editor with
-        // endsWith() to locate the span to replace, so any collapsing of double spaces makes the
-        // comparison fail and the replacement is refused ("原文已改动，未替换").
-        return result.trimEnd()
-    }
-
-    /**
      * Returns the text to send to the model.
      *
      * Everything the user has typed goes in one request — no sentence splitting. The model reads
@@ -777,26 +631,18 @@ class TranslationManager(
         return if (last >= 0 && last < text.length - 1) text.substring(last + 1) else text
     }
 
-    /**
-     * @param typedPunct the punctuation character the user typed that triggered the translation,
-     *  or null for a manual trigger via the 「译」 key (no punctuation is removed, but the
-     *  translation is still terminated with a Chinese full stop).
-     * @param trackPending if true, remember the English as [pendingEnglish] so a candidate click
-     *  replaces it in the editor. False for the pre-edit buffer flow, where the English never
-     *  reached the editor.
-     */
-    private suspend fun applyTranslation(
+    private fun applyTranslation(
         english: String,
-        typedPunct: Char?,
         result: TranslationResult,
-        trackPending: Boolean,
+        range: TranslationRange?,
+        ticket: Long,
     ) {
         // Keep the model's own punctuation as-is: no ASCII-to-CJK full stop conversion on the
         // translated text (the user asked to drop it).
         val candidates = result.translations.map { raw ->
             raw.trim()
         }.filter { it.isNotBlank() }
-        if (candidates.isEmpty()) return
+        check(candidates.isNotEmpty()) { "模型没有给出译文" }
         // Feed the private English teacher: every finished sentence becomes a practice record.
         runCatching {
             teacher.record(
@@ -807,27 +653,17 @@ class TranslationManager(
                 note = result.note,
             )
         }
-        if (trackPending) {
-            // `english` is exactly what the caller read from the editor and sent to the model, so
-            // its length is the number of characters to delete on replace. No boundary guessing:
-            // earlier attempts re-derived the span from the live text and ended up swallowing
-            // neighbouring sentences or already-translated Chinese.
-            pendingEnglish = english
-            translatedSource = english
-            flogError { "yijian: pending=<${english.takeLast(50)}> len=${english.length}" }
-        }
-        // Offer the interpretations in the smartbar
-        val target = pendingEnglish.orEmpty()
-        nlpManager.suggestDirectly(candidates.mapIndexed { i, t ->
+        this.candidates.value = candidates.mapIndexed { i, t ->
             TranslationSuggestionCandidate(
                 text = t,
                 correctedEnglish = result.corrected,
                 note = result.note,
-                replaceTarget = target,
+                requestId = ticket,
+                range = range,
                 corrections = result.corrections,
                 confidence = 1.0 - i * 0.1,
             )
-        })
+        }
     }
 
     private fun callApiBlocking(english: String, context: String, voiceMode: Boolean = false): TranslationResult {

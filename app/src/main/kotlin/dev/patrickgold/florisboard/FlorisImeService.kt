@@ -187,7 +187,6 @@ class FlorisImeService : LifecycleInputMethodService() {
             }
         } catch (e: Exception) {
             flogError { "Unable to switch to the previous IME" }
-            imm?.showInputMethodPicker()
         }
         return false
     }

@@ -42,14 +42,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.patrickgold.florisboard.ime.keyboard3.LocalImeController
 import dev.patrickgold.florisboard.ime.nlp.SuggestionCandidate
-import dev.patrickgold.florisboard.nlpManager
 import org.k3lp.lib.text.asK3String
 
 /** Minimum Android touch target. */
@@ -68,9 +66,7 @@ private val TouchTarget = 48.dp
  */
 @Composable
 fun TranslationPanel() {
-    val context = LocalContext.current
     val imeController = LocalImeController.current
-    val nlpManager by context.nlpManager()
 
     val preedit by imeController.translationPreedit.collectAsState()
     val undoable by imeController.translationUndoable.collectAsState()
@@ -79,14 +75,11 @@ fun TranslationPanel() {
     val pinyinActive by imeController.pinyin.active.collectAsState()
     val status by imeController.translationStatus.collectAsState()
     val error by imeController.translationError.collectAsState()
-    val voiceBusy by imeController.voiceBusy.collectAsState()
     val voiceMsg by imeController.voiceStatus.collectAsState()
     val recorder = imeController.recorder
     val recording = recorder.isRecording
-    val candidates by nlpManager.activeCandidatesFlow.collectAsState()
-
-    val isTranslationCandidates = candidates.isNotEmpty() &&
-        candidates.all { it is TranslationSuggestionCandidate }
+    val translationToCopy by imeController.translationToCopy.collectAsState()
+    val candidates by imeController.translationCandidates.collectAsState()
     // Pinyin mode takes over the panel: it is what the user is actively typing right now.
     if (pinyinActive && (pinyinCandidates.isNotEmpty() || pinyinComposing.isNotEmpty())) {
         PinyinPanel(
@@ -109,25 +102,27 @@ fun TranslationPanel() {
     }
 
     val hasError = status == TranslationManager.Status.ERROR && error != null
-    if (!isTranslationCandidates && preedit.isEmpty() && voiceMsg == null && !recording && !hasError) {
+    val translating = status == TranslationManager.Status.TRANSLATING
+    if (candidates.isEmpty() && preedit.isEmpty() && voiceMsg == null && !recording && !hasError &&
+        !translating && undoable == null) {
         return
     }
 
-    val teacherCard = (candidates.firstOrNull() as? TranslationSuggestionCandidate)
+    val teacherCard = candidates.firstOrNull()
         ?.takeIf { it.correctedEnglish.isNotBlank() || it.note.isNotBlank() }
 
     TranslationPanelContent(
         preedit = preedit,
-        translating = status == TranslationManager.Status.TRANSLATING,
+        translating = translating,
         error = if (status == TranslationManager.Status.ERROR) error else null,
         teacherCard = teacherCard,
         voiceMessage = if (recording) "🎤 正在录音…（松开结束）" else voiceMsg,
         speakingText = candidates.firstOrNull()?.text?.toString().orEmpty(),
         onSpeak = { text -> imeController.speak(text) },
-        candidates = if (isTranslationCandidates) candidates else emptyList(),
-        onClick = { n ->
+        candidates = candidates,
+        onClick = { candidate ->
             imeController.updateStateBlocking {
-                emitCandidate(candidates[n])
+                emitCandidate(candidate)
             }
         },
         onDismiss = {
@@ -135,18 +130,21 @@ fun TranslationPanel() {
             imeController.updateStateBlocking {
                 translationCommitBufferAsRaw()
             }
-            nlpManager.clearSuggestions()
         },
         onClear = {
             // Discard whatever is in the editor for this sentence and hide the panel
             imeController.updateStateBlocking {
                 translationClearAll()
             }
-            nlpManager.clearSuggestions()
         },
         onUndo = {
             imeController.updateStateBlocking { undoLastReplacement() }
-            nlpManager.clearSuggestions()
+        },
+        onCopy = translationToCopy?.let { text ->
+            {
+                imeController.clipboardManager.addNewPlaintext(text)
+                imeController.updateStateBlocking { translationClearAll() }
+            }
         },
         undoAvailable = undoable != null,
     )
@@ -162,10 +160,11 @@ private fun TranslationPanelContent(
     speakingText: String,
     onSpeak: (String) -> Unit,
     candidates: List<SuggestionCandidate>,
-    onClick: (Int) -> Unit,
+    onClick: (SuggestionCandidate) -> Unit,
     onDismiss: () -> Unit,
     onClear: () -> Unit,
     onUndo: () -> Unit,
+    onCopy: (() -> Unit)?,
     undoAvailable: Boolean,
 ) {
     val onSurface = LocalContentColor.current
@@ -191,6 +190,9 @@ private fun TranslationPanelContent(
                 VoiceRow(message = voiceMessage, onSurface = onSurface)
                 Divider(onSurface)
             }
+            if (translating && preedit.isEmpty()) {
+                VoiceRow(message = "正在翻译…", onSurface = onSurface)
+            }
             // Show the error on its own row when there is no draft row to attach it to
             if (preedit.isEmpty() && error != null) {
                 VoiceRow(message = error, onSurface = onSurface, isError = true)
@@ -212,7 +214,7 @@ private fun TranslationPanelContent(
                 CandidateRow(
                     text = candidate.text.toString(),
                     onSurface = onSurface,
-                    onClick = { onClick(n) },
+                    onClick = { onClick(candidate) },
                 )
             }
             if (teacherCard != null) {
@@ -223,12 +225,24 @@ private fun TranslationPanelContent(
                     onSpeak = onSpeak,
                 )
             }
+            if (onCopy != null) {
+                ActionButton("复制译文", onSurface, Modifier.fillMaxWidth(), onClick = onCopy)
+            }
             if (undoAvailable) {
                 Divider(onSurface)
                 UndoRow(onSurface = onSurface, onUndo = onUndo)
             }
-            Divider(onSurface)
-            ActionRows(onSurface = onSurface, onDismiss = onDismiss, onClear = onClear)
+            if (preedit.isNotEmpty()) {
+                Divider(onSurface)
+                ActionRows(onSurface = onSurface, onDismiss = onDismiss, onClear = onClear)
+            } else if (translating || candidates.isNotEmpty() || error != null || voiceMessage != null) {
+                ActionButton(
+                    text = if (translating || candidates.isNotEmpty()) "保留原文" else "关闭",
+                    onSurface = onSurface,
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = onClear,
+                )
+            }
         }
     }
 }
@@ -336,7 +350,7 @@ private fun ActionRows(
 ) {
     Row(modifier = Modifier.fillMaxWidth()) {
         ActionButton(
-            text = "放弃翻译，发送原文",
+            text = "输入识别原文",
             onSurface = onSurface,
             modifier = Modifier.weight(1f),
             onClick = onDismiss,

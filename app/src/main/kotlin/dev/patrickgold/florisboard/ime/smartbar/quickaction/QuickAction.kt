@@ -101,6 +101,9 @@ fun QuickAction.computeDisplayName(imeState: ImeState): String {
             ImeActions.ShowMediaPanel -> R.string.quick_action__ime_ui_mode_media
             ImeActions.ShowClipboardPanel -> R.string.quick_action__ime_ui_mode_clipboard
             ImeActions.HideImeWindow -> R.string.quick_action__ime_hide_ui
+            ImeActions.SwitchToPrevInputMethod -> R.string.enum__swipe_action__switch_to_prev_keyboard
+            ImeActions.SwitchToNextInputMethod -> R.string.setup__select_ime__switch_keyboard_btn
+            ImeActions.ShowInputMethodPicker -> R.string.enum__swipe_action__show_input_method_picker
             ImeActions.SwitchToNextSubtype -> R.string.quick_action__language_switch
             ImeActions.ToggleActionsOverflow -> R.string.quick_action__toggle_actions_overflow
             ImeActions.ToggleAutocorrect -> R.string.quick_action__toggle_autocorrect
@@ -142,13 +145,11 @@ fun QuickAction.computeTooltip(imeState: ImeState): String {
             ImeActions.ShowMediaPanel -> R.string.quick_action__ime_ui_mode_media__tooltip
             ImeActions.ShowClipboardPanel -> R.string.quick_action__ime_ui_mode_clipboard__tooltip
             ImeActions.HideImeWindow -> R.string.quick_action__ime_hide_ui__tooltip
+            ImeActions.SwitchToPrevInputMethod -> R.string.enum__swipe_action__switch_to_prev_keyboard
+            ImeActions.SwitchToNextInputMethod -> R.string.setup__select_ime__switch_keyboard_btn
+            ImeActions.ShowInputMethodPicker -> R.string.enum__swipe_action__show_input_method_picker
             ImeActions.SwitchToNextSubtype,
             ImeActions.SwitchToPrevSubtype -> R.string.quick_action__language_switch__tooltip
-            // Without an entry here the tooltip falls through to general__invalid_fatal and the
-            // button shows "!! invalid !!" on long-press.
-            ImeActions.SwitchToPrevInputMethod,
-            ImeActions.SwitchToNextInputMethod,
-            ImeActions.ShowInputMethodPicker -> R.string.quick_action__language_switch__tooltip
             ImeActions.ToggleActionsOverflow -> R.string.quick_action__toggle_actions_overflow__tooltip
             ImeActions.ToggleAutocorrect -> R.string.quick_action__toggle_autocorrect__tooltip
             // TODO: In the future this will be merged into the resize keyboard panel, for now it is a separate action

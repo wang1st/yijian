@@ -48,11 +48,13 @@ import dev.patrickgold.florisboard.ime.smartbar.quickaction.QuickAction
 import dev.patrickgold.florisboard.ime.nlp.ClipboardSuggestionCandidate
 import dev.patrickgold.florisboard.ime.nlp.SuggestionCandidate
 import dev.patrickgold.florisboard.ime.text.key.KeyVariation
+import dev.patrickgold.florisboard.ime.translation.replaceTranslation
+import dev.patrickgold.florisboard.ime.translation.translationWindow
+import dev.patrickgold.florisboard.ime.translation.TranslationRange
 import dev.patrickgold.florisboard.ime.translation.TranslationManager
 import dev.patrickgold.florisboard.ime.translation.TranslationSuggestionCandidate
 import dev.patrickgold.florisboard.lib.FlorisLocale
 import dev.patrickgold.florisboard.lib.devtools.flogDebug
-import dev.patrickgold.florisboard.lib.devtools.flogError
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -103,7 +105,8 @@ class ImeController(
         FlorisApplication.getHack()
     )
 
-    /** Current pre-edit buffer content (typed English that has not been sent to the app yet). */
+    val translationToCopy get() = translationManager.translationToCopy
+    val translationCandidates get() = translationManager.candidates
     val translationPreedit get() = translationManager.preeditText
 
     /** Translation API lifecycle: IDLE / TRANSLATING / ERROR. */
@@ -131,55 +134,26 @@ class ImeController(
     /** Reads [text] aloud via DeepSeek TTS. */
     fun speak(text: String) = translationManager.speak(text)
 
-    /**
-     * Guarantees the toolbar exposes a "switch input method" button.
-     *
-     * Editing QuickActionArrangement.Default only helps fresh installs: an existing
-     * smartbar__action_arrangement replaces it. This migrates an existing arrangement once by
-     * prepending the action when it is absent.
-     */
-    fun ensureImeSwitchAction() {
-        scope.launch {
-            val arrangement = prefs.smartbar.actionArrangement.get()
-            val sticky = arrangement.stickyAction
-
-            // The right-most toolbar slot should switch IMEs (one tap = previous keyboard).
-            // Existing installs still carry the old voice-input action there.
-            val isVoiceSticky = sticky is QuickAction.InsertK3Descriptor &&
-                sticky.descriptor == ImeActions.ExternalVoiceInput
-            if (isVoiceSticky) {
-                prefs.smartbar.actionArrangement.set(
-                    arrangement.copy(
-                        stickyAction = QuickAction.InsertK3Descriptor(ImeActions.SwitchToPrevInputMethod),
-                    )
-                )
-                flogError { "yijian: sticky toolbar action switched from voice to IME switch" }
-                return@launch
-            }
-
-            // Already replaced, or the user chose something else there: leave it alone.
+    /** Migrate the old default sticky slot and its duplicate in one preference write. */
+    suspend fun ensureImeSwitchAction() {
+        val arrangement = prefs.smartbar.actionArrangement.get()
+        val previous = QuickAction.InsertK3Descriptor(ImeActions.SwitchToPrevInputMethod)
+        val sticky = when (arrangement.stickyAction) {
+            QuickAction.InsertK3Descriptor(ImeActions.ExternalVoiceInput) -> previous
+            else -> arrangement.stickyAction
         }
-    }
-
-    /**
-     * Removes a stray input-method switch from the dynamic row.
-     *
-     * Both the sticky slot and the dynamic row used to carry one, so the toolbar showed two globe
-     * buttons. Only the sticky one (far right) is kept.
-     */
-    fun removeDuplicateImeSwitch() {
-        scope.launch {
-            val arrangement = prefs.smartbar.actionArrangement.get()
-            val filtered = arrangement.dynamicActions.filterNot {
-                it is QuickAction.InsertK3Descriptor &&
-                    (it.descriptor == ImeActions.ShowInputMethodPicker ||
-                        it.descriptor == ImeActions.SwitchToPrevInputMethod ||
-                        it.descriptor == ImeActions.SwitchToNextInputMethod)
-            }
-            if (filtered.size == arrangement.dynamicActions.size) return@launch
-            prefs.smartbar.actionArrangement.set(arrangement.copy(dynamicActions = filtered))
-            flogError { "yijian: removed duplicate IME switch from the action row" }
+        val switches = setOf<QuickAction>(
+            previous,
+            QuickAction.InsertK3Descriptor(ImeActions.SwitchToNextInputMethod),
+            QuickAction.InsertK3Descriptor(ImeActions.ShowInputMethodPicker),
+        )
+        val dynamicActions = if (sticky != null && switches.contains(sticky)) {
+            arrangement.dynamicActions.filterNot { it in switches }
+        } else {
+            arrangement.dynamicActions
         }
+        val migrated = arrangement.copy(stickyAction = sticky, dynamicActions = dynamicActions)
+        if (migrated != arrangement) prefs.smartbar.actionArrangement.set(migrated)
     }
 
     /** True while the keyboard is in Chinese (pinyin) mode. */
@@ -297,8 +271,7 @@ class ImeController(
             ic: WeakReference<InputConnection>,
             info: FlorisEditorInfo,
         ) {
-            translationManager.clearBuffer()
-            translationManager.clearTranslationHistory()
+            translationManager.resetEditor()
             val newTouchLayerId: K3LayerId
             val keyVariation: KeyVariation
             when (info.inputAttributes.type) {
@@ -430,9 +403,6 @@ class ImeController(
             translationManager.maybeTranslateOnPunct(value)
         }
 
-        /** Set right after a translation replaced text, cleared when the undo window expires. */
-        private var lastReplacement: ReplacedText? = null
-
         /**
          * Commits text straight into the target editor, bypassing the yijian pre-edit buffer.
          * Used for the translation results themselves and for raw-buffer flushes.
@@ -449,6 +419,7 @@ class ImeController(
          */
         fun translationCommitBufferAsRaw() {
             translationManager.commitBufferAsRaw(this)
+            translationClearAll()
         }
 
         /**
@@ -456,14 +427,7 @@ class ImeController(
          * target editor.
          */
         fun translationClearAll() {
-            translationManager.clearBuffer()
-            translationManager.pendingEnglish = null
-            translationManager.pendingStartPos = null
-            translationManager.clearTranslationMark()
-            translationManager.resetLastCommitted()
-            // Also drop any error/voice banner, otherwise the panel stays on screen after a failed
-            // recognition and 清除 looks like it did nothing.
-            translationManager.clearStatus()
+            translationManager.dismissRequest()
             translationManager.clearVoiceStatus()
         }
 
@@ -517,7 +481,7 @@ class ImeController(
                     //  appContext.showShortToastSync(R.string.clipboard__cleared_primary_clip)
                 }
                 ImeActions.SelectAll -> state.editor.performSelectAll()
-                ImeActions.Translate -> translationManager.translateNow()
+                ImeActions.Translate -> translationManager.translateNow(state)
                 // The touch model emits once on press (start recording) and once on release
                 // (stop + transcribe), which gives push-to-talk for free.
                 ImeActions.TogglePinyin -> {
@@ -564,7 +528,9 @@ class ImeController(
                 ImeActions.Redo -> state.editor.performRedo()
                 ImeActions.Settings -> FlorisImeService.launchSettings()
                 ImeActions.ShowInputMethodPicker -> FlorisImeService.showImePicker()
-                ImeActions.SwitchToPrevInputMethod -> FlorisImeService.switchToPrevInputMethod()
+                ImeActions.SwitchToPrevInputMethod -> {
+                    if (!FlorisImeService.switchToPrevInputMethod()) FlorisImeService.showImePicker()
+                }
                 ImeActions.SwitchToNextInputMethod -> FlorisImeService.switchToNextInputMethod()
                 ImeActions.ShowSubtypePicker -> {} // TODO
                 ImeActions.SwitchToPrevSubtype -> {} // TODO
@@ -603,14 +569,14 @@ class ImeController(
             val info = state.editor.info
             // yijian: Enter translates, Shift+Enter inserts a newline. The shift state comes from
             // the keyboard's own shift layer, so no physical key tracking is needed.
-            val isShiftPressed = state.flags.inputShiftState != InputShiftState.UNSHIFTED
+            val isShiftPressed = state.flags.inputShiftState == InputShiftState.SHIFTED_MANUAL
             if (isShiftPressed) {
                 emitEnterKey()
                 return
             }
             // S1: the text is already in the editor, so Enter always means "translate this".
             if (prefs.translation.enabled.get()) {
-                translationManager.translateNow()
+                translationManager.translateNow(state)
                 return
             }
             if (info.imeOptions.flagNoEnterAction || info.inputAttributes.flagTextMultiLine) {
@@ -671,146 +637,54 @@ class ImeController(
 //            }
             when (candidate) {
                 is ClipboardSuggestionCandidate -> emitClipboardItem(candidate.clipboardItem)
-                is TranslationSuggestionCandidate -> {
-                    emitTranslationCandidate(candidate)
-                    // Selection made; dismiss the candidate list
-                    dev.patrickgold.florisboard.FlorisApplication.getHack().nlpManager.value.clearSuggestions()
-                }
+                is TranslationSuggestionCandidate -> emitTranslationCandidate(candidate)
                 else -> emitCompletion(candidate)
             }
         }
 
-        /**
-         * Replaces the English sentence still sitting in the editor with the translation the
-         * user picked from the candidates list. Runs inside the current state update scope on
-         * purpose — calling updateStateBlocking here would deadlock on the state mutex.
-         */
-        /**
-         * Replaces the span that was sent for translation with the picked candidate.
-         *
-         * The span is located by position ([pendingStartPos], cursor), which was recorded when
-         * the request was issued. String-based matching was abandoned: spacing differences, the
-         * model spelling-correcting a word, or our own text cleanup all made it compare two things
-         * that were never identical and block a perfectly valid replace.
-         *
-         * One verification remains: the position is trusted only when the span it points to still
-         * contains the text we translated (compared loosely, punctuation/whitespace ignored).
-         * If the user edited meanwhile, the position is no longer meaningful and we refuse rather
-         * than delete something unrelated.
-         */
-        fun emitTranslationCandidate(candidate: TranslationSuggestionCandidate) {
-            val newText = candidate.text.toString()
-            val sourceText = candidate.replaceTarget.ifBlank { translationManager.pendingEnglish }
-            val startPos = translationManager.pendingStartPos
-            val endPos = state.content.selection.start
-
-            if (startPos == null || endPos <= startPos) {
-                // No position recorded - fall back to appending without touching the editor.
-                emitTextDirect(newText.asK3String())
-                translationManager.pendingEnglish = null
-                translationManager.pendingStartPos = null
-                return
+        private fun emitTranslationCandidate(candidate: TranslationSuggestionCandidate) {
+            if (!translationManager.isCurrent(candidate)) return
+            val range = candidate.range
+            val translation = candidate.text.toString()
+            if (range == null) {
+                // Only voice drafts have no editor text to replace.
+                emitTextDirect(translation.asK3String())
+            } else {
+                if (!replaceAndRefresh(range, translation)) {
+                    translationManager.dismissRequest()
+                    translationManager.translationToCopy.value = translation
+                    translationManager.setError("未能确认替换结果，请检查输入框。也可以复制译文。")
+                    return
+                }
+                val inserted = range.copy(text = translation)
+                translationManager.rememberTranslation(range, translation)
+                translationManager.offerUndo(inserted, range.text)
             }
-
-            // No string verification. Position is the only fact we trust; comparing content kept
-            // producing false rejections (the model spelling-corrects a word, spacing differs, our
-            // own cleanup normalises something) even though the user had edited nothing.
-            replaceSpanByPosition(startPos, endPos, newText)
-
-            // Record the accepted pair so the same sentence is never re-translated.
-            sourceText?.let { translationManager.rememberTranslation(it, newText) }
-            translationManager.pendingEnglish = null
-            translationManager.pendingStartPos = null
-            translationManager.clearBuffer()
-            translationManager.resetLastCommitted()
-            lastReplacement = ReplacedText(
-                original = sourceText.orEmpty(),
-                translated = newText,
-                timestamp = System.currentTimeMillis(),
-            )
-            sourceText?.let { translationManager.offerUndo(it) }
+            translationManager.dismissRequest()
         }
 
-        /** Strips punctuation and whitespace so two versions can be compared without those layers. */
-    
-        /** True when [b] is a suffix of [a] after normalisation. */
-    
-        /** Selects [startPos, endPos) and commits [replacement] over it, all in one batch. */
-        private fun replaceSpanByPosition(startPos: Int, endPos: Int, replacement: String) {
-            val ic = state.editor.ic.get() ?: return
-            ic.beginBatchEdit()
-            try {
-                ic.setSelection(startPos, endPos)
-                ic.commitText(replacement, 1)
-            } finally {
-                ic.endBatchEdit()
+        private fun replaceAndRefresh(range: TranslationRange, replacement: String): Boolean {
+            val ic = state.editor.ic.get() ?: return false
+            val replaced = ic.replaceTranslation(range, replacement)
+            // Refresh even on failure: some editors accept a selection but refuse the commit.
+            expectedContentQueue.clear()
+            ic.translationWindow(50)?.let { window ->
+                resetContent(
+                    K3TextRange(window.start, window.start + window.selected.length),
+                    state.editor.getSurroundingText(50, 10),
+                )
             }
+            return replaced
         }
 
-        /**
-         * Replaces [old] (immediately before the cursor) with [replacement] by selecting the span
-         * and committing the new text over it.
-         *
-         * The documented way to rewrite editor text is setSelection() + commitText(): commitText
-         * replaces the current selection, whereas deleteSurroundingText is optional for the editor
-         * to honour and is ignored outright by some apps (WeChat among them).
-         *
-         * @return true when the replacement is verified in place.
-         */
-        /**
-         * True when [tail] ends with [target] once runs of whitespace are collapsed. Editors differ
-         * from our request copy only in spacing; that must not block a replacement.
-         */
-        /**
-         * Length of the suffix of [tail] that corresponds to [target], ignoring whitespace and
-         * punctuation differences between them.
-         *
-         * Returns null when they do not match. The returned length is measured in [tail] characters
-         * so it can be used to delete exactly the right span - comparing loosely but deleting by
-         * `target.length` deleted the wrong number of characters whenever spacing differed.
-         */
-    
-        /**
-         * Replaces the [old] text immediately before the cursor with [replacement].
-         *
-         * There is no single API that every editor honours, so this walks a fallback chain and
-         * **verifies after each step** whether the old text is really gone:
-         *
-         *  1. `setComposingRegion(start, end)` + `commitText` — the pattern Android's own
-         *     InputMethodService uses. Composing regions are core to IMEs, so any editor that
-         *     supports Chinese input supports them.
-         *  2. `deleteSurroundingText` + `commitText` — the documented replace idiom.
-         *  3. `KEYCODE_DEL` events + `commitText` — for editors that only react to key events.
-         *
-         * @return true when the replacement is confirmed in the editor.
-         */
-    
-        /**
-         * Deletes [text] immediately before the cursor and verifies it actually disappeared.
-         *
-         * WeChat and other apps ship custom InputConnection implementations that silently ignore
-         * deleteSurroundingText, which is why the replacement looked like a no-op. If the batch
-         * delete does not take effect, fall back to individual backspace key events.
-         *
-         * @return true when the text is gone.
-         */
-
-        /** Reads the text immediately before the cursor directly from the InputConnection. */
-    
-        /** Restores the English that the last accepted translation replaced. */
         fun undoLastReplacement() {
-            val replaced = lastReplacement ?: return
-            if (System.currentTimeMillis() - replaced.timestamp > UNDO_WINDOW_MS) {
-                lastReplacement = null
-                return
-            }
-            val cur = state.editor.getSurroundingText(replaced.translated.length + 5, 0).textBefore
-            if (cur.endsWith(replaced.translated)) {
-                state.editor.deleteSurroundingText(replaced.translated.length, 0)
-                emitTextDirect(replaced.original.asK3String())
-            }
-            lastReplacement = null
+            val undo = translationManager.undoable.value ?: return
             translationManager.clearUndo()
+            if (replaceAndRefresh(undo.range, undo.original)) {
+                translationManager.forgetTranslation(undo.range)
+            } else {
+                translationManager.setError("未能确认撤销结果，请检查输入框")
+            }
         }
 
         fun emitClipboardItem(item: ClipboardItem?): Boolean {
@@ -930,7 +804,7 @@ class ImeController(
         }
 
         fun handleFinishInputView() {
-            translationManager.clearBuffer()
+            translationManager.resetEditor()
             resetContent()
             state = state.copy(editor = ImeEditor.Disconnected)
             expectedContentQueue.clear()
@@ -971,11 +845,6 @@ class ImeController(
         private val NEWLINE_SEQ = "\n".asK3String()
     }
 }
-
-/** Text that a translation replaced, kept briefly so the user can undo. */
-internal data class ReplacedText(val original: String, val translated: String, val timestamp: Long)
-
-internal const val UNDO_WINDOW_MS = 5000L
 
 enum class OperationUnit {
     CHARACTERS,

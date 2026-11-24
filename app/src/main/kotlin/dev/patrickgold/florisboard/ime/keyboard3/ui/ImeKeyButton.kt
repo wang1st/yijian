@@ -114,7 +114,7 @@ fun ImeKeyButton(
         modifier = modifier,
         clickAndSemanticsModifier = Modifier
             .indication(interactionSource, ripple())
-            .pointerInput(isEnabled) {
+            .pointerInput(output, isEnabled, isRepeatable, keyRepeatTimeout, keyRepeatDelay) {
                 if (!isEnabled) return@pointerInput
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = true)
