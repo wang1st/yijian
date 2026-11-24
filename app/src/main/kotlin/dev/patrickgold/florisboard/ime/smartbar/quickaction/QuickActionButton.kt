@@ -27,6 +27,8 @@ import androidx.compose.ui.Modifier
 import dev.patrickgold.compose.tooltip.PlainTooltip
 import dev.patrickgold.florisboard.ime.keyboard3.ImeActions
 import dev.patrickgold.florisboard.ime.keyboard3.ImeIcons
+import org.k3lp.lib.text.K3Descriptor
+import org.k3lp.lib.text.K3StringOrDescriptor
 import dev.patrickgold.florisboard.ime.keyboard3.LocalImeController
 import dev.patrickgold.florisboard.ime.keyboard3.ui.Display3
 import dev.patrickgold.florisboard.ime.keyboard3.ui.ImeKeyButton
