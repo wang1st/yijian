@@ -647,7 +647,11 @@ class ImeController(
                     translationManager.setError("原文已改动，未替换")
                     return
                 }
-                state.editor.deleteSurroundingText(pending.length, 0)
+                if (!deleteTextBefore(pending)) {
+                    translationManager.pendingEnglish = null
+                    translationManager.setError("无法删除原文，请手动清空")
+                    return
+                }
             }
 
             emitTextDirect(newText.asK3String())
@@ -665,6 +669,26 @@ class ImeController(
             translationManager.pendingEnglish = null
             translationManager.clearBuffer()
             translationManager.resetLastCommitted()
+        }
+
+        /**
+         * Deletes [text] immediately before the cursor and verifies it actually disappeared.
+         *
+         * WeChat and other apps ship custom InputConnection implementations that silently ignore
+         * deleteSurroundingText, which is why the replacement looked like a no-op. If the batch
+         * delete does not take effect, fall back to individual backspace key events.
+         *
+         * @return true when the text is gone.
+         */
+        private fun deleteTextBefore(text: String): Boolean {
+            state.editor.deleteSurroundingText(text.length, 0)
+            if (!liveTextBefore(40).endsWith(text)) return true   // gone
+
+            flogError { "yijian: deleteSurroundingText ignored, falling back to backspaces" }
+            repeat(text.length) {
+                state.editor.sendDownUpKeyEvent(KeyEvent.KEYCODE_DEL)
+            }
+            return !liveTextBefore(40).endsWith(text)
         }
 
         /** Reads the text immediately before the cursor directly from the InputConnection. */
