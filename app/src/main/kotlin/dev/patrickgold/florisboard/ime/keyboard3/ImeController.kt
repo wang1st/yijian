@@ -51,6 +51,7 @@ import dev.patrickgold.florisboard.ime.translation.TranslationManager
 import dev.patrickgold.florisboard.ime.translation.TranslationSuggestionCandidate
 import dev.patrickgold.florisboard.lib.FlorisLocale
 import dev.patrickgold.florisboard.lib.devtools.flogDebug
+import dev.patrickgold.florisboard.lib.devtools.flogError
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
