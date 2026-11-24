@@ -47,6 +47,11 @@ data class TranslationSuggestionCandidate(
     override val text: CharSequence,
     val correctedEnglish: String,
     val note: String,
+    /**
+     * The exact editor text this translation replaces. Carried on the candidate itself so a
+     * click never depends on global state that a later translation may have overwritten.
+     */
+    val replaceTarget: String = "",
     val corrections: List<CorrectionItem> = emptyList(),
     override val confidence: Double = 1.0,
     override val isEligibleForAutoCommit: Boolean = false,
@@ -636,11 +641,13 @@ class TranslationManager(
             flogError { "yijian: pending=<${tail.takeLast(60)}> len=${tail.length}" }
         }
         // Offer the interpretations in the smartbar
+        val target = pendingEnglish.orEmpty()
         nlpManager.suggestDirectly(candidates.mapIndexed { i, t ->
             TranslationSuggestionCandidate(
                 text = t,
                 correctedEnglish = result.corrected,
                 note = result.note,
+                replaceTarget = target,
                 corrections = result.corrections,
                 confidence = 1.0 - i * 0.1,
             )

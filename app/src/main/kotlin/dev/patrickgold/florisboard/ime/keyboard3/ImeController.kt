@@ -625,8 +625,10 @@ class ImeController(
          */
         fun emitTranslationCandidate(candidate: TranslationSuggestionCandidate) {
             val newText = candidate.text.toString()
-            val pending = translationManager.pendingEnglish
-            flogError { "yijian: click pending=<${pending}> newText=<${newText.take(20)}>" }
+            // Prefer the target stored on the candidate: global pendingEnglish may already belong
+            // to a newer sentence, which is what made earlier attempts replace the wrong text.
+            val pending = candidate.replaceTarget.ifBlank { translationManager.pendingEnglish }
+            flogError { "yijian: click target=<${pending}> newText=<${newText.take(20)}>" }
 
             // Only replace when the tail still matches what we translated: the user may have
             // edited the sentence while the request was in flight. Read straight from the
