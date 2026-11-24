@@ -68,6 +68,11 @@ the mapping to a different display value.
 
     <display output="@fl:action/external_voice_input" display="@fl:icon/voice" />
 
+    <!-- Input-method switching on the smartbar: the globe icon is the established symbol. -->
+    <display output="@fl:action/switch_to_prev_input_method" display="@fl:icon/language_switch" />
+    <display output="@fl:action/switch_to_next_input_method" display="@fl:icon/language_switch" />
+    <display output="@fl:action/show_input_method_picker" display="@fl:icon/language_switch" />
+
     <display output="@fl:action/noop_drag_marker" display="@fl:icon/drag_marker" />
     <display output="@fl:action/noop_spacer" display="@fl:icon/close" />
 

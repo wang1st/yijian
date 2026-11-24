@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import dev.patrickgold.compose.tooltip.PlainTooltip
 import dev.patrickgold.florisboard.ime.keyboard3.ImeActions
+import dev.patrickgold.florisboard.ime.keyboard3.ImeIcons
 import dev.patrickgold.florisboard.ime.keyboard3.LocalImeController
 import dev.patrickgold.florisboard.ime.keyboard3.ui.Display3
 import dev.patrickgold.florisboard.ime.keyboard3.ui.ImeKeyButton
@@ -70,9 +71,11 @@ fun QuickActionButton(
             modifier = modifier.aspectRatio(1f),
         ) { display ->
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                // Render foreground
+                // `display` comes from the keyboard model's output table, which has no entry for
+                // smartbar actions - it degrades to the raw descriptor and renders as nothing.
+                // Use the action's icon explicitly so the button is never blank.
                 Display3(
-                    display = display,
+                    display = actionIcon(descriptor) ?: display,
                     elementName = "$elementName-icon",
                 )
                 // Render additional info if this is a tile
@@ -84,5 +87,20 @@ fun QuickActionButton(
                 }
             }
         }
+    }
+}
+
+/** Explicit icon for smartbar actions, which have no keyboard-model display entry. */
+private fun actionIcon(descriptor: K3StringOrDescriptor): K3StringOrDescriptor? {
+    if (descriptor !is K3Descriptor) return null
+    return when (descriptor.name) {
+        ImeActions.SwitchToPrevInputMethod.name,
+        ImeActions.SwitchToNextInputMethod.name,
+        ImeActions.ShowInputMethodPicker.name,
+        ImeActions.SwitchToNextSubtype.name,
+        ImeActions.SwitchToPrevSubtype.name,
+        -> ImeIcons.LanguageSwitch
+        ImeActions.ExternalVoiceInput.name -> ImeIcons.Voice
+        else -> null
     }
 }
