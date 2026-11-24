@@ -365,9 +365,15 @@ class TranslationManager(
             beforeCursor = state.editor.getSurroundingText(MAX_TRANSLATE_CHARS + 40, 0).textBefore
         }
 
+        flogError {
+            "yijian: read ${beforeCursor.length} chars, head=<${beforeCursor.take(40)}> " +
+                "tail=<${beforeCursor.takeLast(40)}>"
+        }
+
         // Take the trailing sentence *verbatim* — its exact length is what gets deleted when the
         // user accepts a translation.
         val raw = trailingSentenceRaw(beforeCursor)
+        flogError { "yijian: extracted raw=<${raw.takeLast(50)}> len=${raw.length}" }
         if (raw.isBlank() || !hasTranslatableContent(raw, requireTwoWords = false)) {
             flogError {
                 "yijian: nothing to translate. read=${beforeCursor.length} chars, " +
