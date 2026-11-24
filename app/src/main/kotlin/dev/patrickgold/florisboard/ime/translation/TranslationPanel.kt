@@ -148,6 +148,7 @@ fun TranslationPanel() {
             imeController.updateStateBlocking { undoLastReplacement() }
             nlpManager.clearSuggestions()
         },
+        undoAvailable = undoable != null,
     )
 }
 
@@ -165,6 +166,7 @@ private fun TranslationPanelContent(
     onDismiss: () -> Unit,
     onClear: () -> Unit,
     onUndo: () -> Unit,
+    undoAvailable: Boolean,
 ) {
     val onSurface = LocalContentColor.current
     Column(
@@ -221,7 +223,7 @@ private fun TranslationPanelContent(
                     onSpeak = onSpeak,
                 )
             }
-            if (undoable != null) {
+            if (undoAvailable) {
                 Divider(onSurface)
                 UndoRow(onSurface = onSurface, onUndo = onUndo)
             }
