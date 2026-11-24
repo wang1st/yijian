@@ -105,6 +105,7 @@ class ImeController(
         FlorisApplication.getHack()
     )
 
+    val lastEnglishLesson get() = translationManager.lastLesson
     val translationToCopy get() = translationManager.translationToCopy
     val translationCandidates get() = translationManager.candidates
     val translationPreedit get() = translationManager.preeditText
@@ -661,6 +662,7 @@ class ImeController(
                 translationManager.offerUndo(inserted, range.text)
             }
             translationManager.dismissRequest()
+            if (candidate.correctedEnglish.isNotBlank()) translationManager.lastLesson.value = candidate
         }
 
         private fun replaceAndRefresh(range: TranslationRange, replacement: String): Boolean {
@@ -679,6 +681,7 @@ class ImeController(
 
         fun undoLastReplacement() {
             val undo = translationManager.undoable.value ?: return
+            translationManager.lastLesson.value = null
             translationManager.clearUndo()
             if (replaceAndRefresh(undo.range, undo.original)) {
                 translationManager.forgetTranslation(undo.range)

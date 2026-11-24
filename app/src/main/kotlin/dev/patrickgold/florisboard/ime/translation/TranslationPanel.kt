@@ -45,12 +45,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.patrickgold.florisboard.ime.keyboard3.LocalImeController
@@ -86,6 +86,7 @@ fun TranslationPanel() {
     val recorder = imeController.recorder
     val recording = recorder.isRecording
     val translationToCopy by imeController.translationToCopy.collectAsState()
+    val lastLesson by imeController.lastEnglishLesson.collectAsState()
     val candidates by imeController.translationCandidates.collectAsState()
     // Pinyin mode takes over the panel: it is what the user is actively typing right now.
     if (pinyinActive && (pinyinCandidates.isNotEmpty() || pinyinComposing.isNotEmpty())) {
@@ -111,11 +112,11 @@ fun TranslationPanel() {
     val hasError = status == TranslationManager.Status.ERROR && error != null
     val translating = status == TranslationManager.Status.TRANSLATING
     if (candidates.isEmpty() && preedit.isEmpty() && voiceMsg == null && !recording && !hasError &&
-        !translating && undoable == null) {
+        !translating && undoable == null && lastLesson == null) {
         return
     }
 
-    val teacherCard = candidates.firstOrNull()
+    val teacherCard = (candidates.firstOrNull() ?: lastLesson)
         ?.takeIf { it.correctedEnglish.isNotBlank() || it.note.isNotBlank() || it.corrections.isNotEmpty() }
 
     TranslationPanelContent(
@@ -191,6 +192,14 @@ private fun TranslationPanelContent(
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState()),
         ) {
+            if (teacherCard != null) {
+                TeacherCard(
+                    card = teacherCard,
+                    onSurface = onSurface,
+                    onSpeak = onSpeak,
+                )
+                Divider(onSurface)
+            }
             if (voiceMessage != null) {
                 VoiceRow(message = voiceMessage, onSurface = onSurface)
                 Divider(onSurface)
@@ -222,15 +231,6 @@ private fun TranslationPanelContent(
                     onClick = { onClick(candidate) },
                 )
             }
-            if (teacherCard != null) {
-                Divider(onSurface)
-                TeacherCard(
-                    card = teacherCard,
-                    original = teacherCard.range?.text ?: preedit,
-                    onSurface = onSurface,
-                    onSpeak = onSpeak,
-                )
-            }
             if (onCopy != null) {
                 ActionButton("复制译文", onSurface, Modifier.fillMaxWidth(), onClick = onCopy)
             }
@@ -241,7 +241,7 @@ private fun TranslationPanelContent(
             if (preedit.isNotEmpty()) {
                 Divider(onSurface)
                 ActionRows(onSurface = onSurface, onDismiss = onDismiss, onClear = onClear)
-            } else if (translating || candidates.isNotEmpty() || error != null || voiceMessage != null) {
+            } else if (translating || candidates.isNotEmpty() || error != null || voiceMessage != null || teacherCard != null) {
                 ActionButton(
                     text = if (translating || candidates.isNotEmpty()) "保留原文" else "关闭",
                     onSurface = onSurface,
@@ -396,7 +396,7 @@ private fun ActionButton(
     ) {
         Text(
             text = text,
-            color = onSurface.copy(alpha = if (danger) 0.62f else 0.5f),
+            color = onSurface.copy(alpha = if (danger) 0.72f else 0.82f),
             fontSize = 13.sp,
             maxLines = 1,
         )
@@ -421,61 +421,60 @@ private fun Divider(onSurface: androidx.compose.ui.graphics.Color) {
 @Composable
 private fun TeacherCard(
     card: TranslationSuggestionCandidate,
-    original: String,
     onSurface: androidx.compose.ui.graphics.Color,
     onSpeak: (String) -> Unit,
 ) {
     var expanded by remember(card.requestId) { mutableStateOf(false) }
     val english = card.correctedEnglish
-    val toggleLabel = if (expanded) "收起英语讲解" else "展开英语讲解"
-    Column(Modifier.fillMaxWidth()) {
+    val hasEnglish = english.isNotBlank()
+    Column(
+        modifier = Modifier.fillMaxWidth().background(onSurface.copy(alpha = 0.05f))
+            .padding(start = 16.dp, end = 12.dp, bottom = 10.dp),
+    ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = TouchTarget)
-                    .clickable(role = Role.Button, onClickLabel = toggleLabel) { expanded = !expanded }
-                    .padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = english.ifBlank { "英语讲解" },
-                    modifier = Modifier.weight(1f),
-                    color = onSurface.copy(alpha = 0.85f),
-                    fontSize = 14.sp,
-                    maxLines = if (expanded) Int.MAX_VALUE else 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = if (expanded) "收起" else "讲解",
-                    color = onSurface.copy(alpha = 0.75f),
-                    fontSize = 13.sp,
+            Text(
+                text = if (hasEnglish) "地道英文" else "英语讲解",
+                modifier = Modifier.weight(1f).semantics { heading() },
+                color = onSurface.copy(alpha = 0.78f),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            if (hasEnglish) {
+                ActionButton(
+                    text = "朗读",
+                    onSurface = onSurface,
+                    modifier = Modifier.semantics { contentDescription = "朗读英文" },
+                    onClick = { onSpeak(english) },
                 )
             }
-            if (english.isNotBlank()) {
-                Box(
-                    modifier = Modifier
-                        .width(TouchTarget)
-                        .height(TouchTarget)
-                        .clickable(role = Role.Button) { onSpeak(english) }
-                        .semantics { contentDescription = "朗读英文" },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(text = "🔊", fontSize = 16.sp)
-                }
-            }
+            ActionButton(
+                text = if (expanded) "收起" else "讲解",
+                onSurface = onSurface,
+                onClick = { expanded = !expanded },
+            )
+        }
+        if (hasEnglish) {
+            Text(
+                text = english,
+                color = onSurface,
+                modifier = Modifier.fillMaxWidth(),
+                fontSize = 20.sp,
+                lineHeight = 27.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = if (expanded) Int.MAX_VALUE else 3,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
         if (expanded) {
             Column(
-                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                if (original.isNotBlank()) {
-                    Text("原文　$original", color = onSurface.copy(alpha = 0.75f), fontSize = 14.sp)
+                if (card.originalEnglish.isNotBlank() && card.originalEnglish != english) {
+                    Text("原文　${card.originalEnglish}", color = onSurface.copy(alpha = 0.75f), fontSize = 14.sp)
                 }
                 for (item in card.corrections) {
                     Text("${item.wrong} → ${item.right}", color = onSurface, fontWeight = FontWeight.Medium)

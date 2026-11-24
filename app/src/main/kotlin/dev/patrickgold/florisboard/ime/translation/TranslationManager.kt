@@ -45,6 +45,7 @@ import java.net.URL
 data class TranslationSuggestionCandidate(
     override val text: CharSequence,
     val correctedEnglish: String,
+    val originalEnglish: String,
     val note: String,
     val requestId: Long,
     /** A null range denotes a voice draft, which has never been inserted in the editor. */
@@ -85,6 +86,7 @@ class TranslationManager(
     private val prefs by FlorisPreferenceStore
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
+    val lastLesson = MutableStateFlow<TranslationSuggestionCandidate?>(null)
     val translationToCopy = MutableStateFlow<String?>(null)
     val candidates = MutableStateFlow<List<TranslationSuggestionCandidate>>(emptyList())
     private val accepted = mutableListOf<TranslationRange>()
@@ -93,6 +95,7 @@ class TranslationManager(
     /** Called inside the controller state update, like publication and acceptance. */
     fun dismissRequest() {
         requestId++
+        lastLesson.value = null
         pendingRange = null
         translationToCopy.value = null
         candidates.value = emptyList()
@@ -202,6 +205,7 @@ class TranslationManager(
      * @return always false — the emit is never consumed.
      */
     fun observeEmitText(value: K3String, scope: ImeController.UpdateImeStateScope): Boolean {
+        lastLesson.value = null
         if (!preeditActive(scope.state)) return false
         val s = value.toText()
         trackedLength += s.length
@@ -211,6 +215,7 @@ class TranslationManager(
 
     /** Backspace is never intercepted either; just keep the tracked length in sync. */
     fun observeBackspace(scope: ImeController.UpdateImeStateScope): Boolean {
+        lastLesson.value = null
         if (!preeditActive(scope.state)) return false
         if (trackedLength > 0) trackedLength -= 1
         return false
@@ -657,6 +662,7 @@ class TranslationManager(
             TranslationSuggestionCandidate(
                 text = t,
                 correctedEnglish = result.corrected,
+                originalEnglish = english,
                 note = result.note,
                 requestId = ticket,
                 range = range,
@@ -673,7 +679,7 @@ class TranslationManager(
         val model = prefs.translation.model.get()
 
         val systemPrompt = """你是「译键」输入法的私人英语老师兼翻译引擎。用户是英文水平有限的中国人，输入的英文常有拼写、语法错误，或用词不符合英语口语习惯。任务：
-1. corrected：把他这句话改写成规范、地道的英文（保留他的原意，不要改写主题）。
+1. corrected：给出一句自然、可直接使用的英文，保留原意、礼貌程度和情绪。根据原文或上下文明示的关系选择措辞：朋友聊天用自然口语，工作请求清楚得体。关系不明确时使用中性日常表达，不添加称呼、承诺或原文没有的信息。原句已经地道时保留原句。
 2. translations：结合上下文翻译成地道中文（口语/聊天语气）。句意有多种理解时给最多 3 个不同意图的译文，按贴切度排序；句意明确时只给 1 个。
 3. corrections：逐条列出他这句话里的问题（最多 5 条，没有就给空数组）。每条：
    - tag：问题类型，只能是「拼写」「语法」「用词」「表达」之一
