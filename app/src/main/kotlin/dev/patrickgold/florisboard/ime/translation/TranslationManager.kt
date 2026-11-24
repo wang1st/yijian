@@ -358,9 +358,7 @@ class TranslationManager(
         // A trailing word typed without a space is still an uncommitted composing region; its
         // text is not reliably part of getTextBeforeCursor, which is why only the underlined part
         // used to be read. Finalise the composition first so the whole sentence is visible.
-        if (state.content.composing.isValid) {
-            state.editor.ic.get()?.finishComposingText()
-        }
+        state.editor.ic.get()?.finishComposingText()
 
         // S1: text lives in the editor. Take the trailing sentence *verbatim* — no trimming —
         // because its exact length is what gets deleted when the user accepts a translation.

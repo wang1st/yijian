@@ -697,8 +697,9 @@ class ImeController(
             // A word typed without a trailing space is still a composing region (it shows the
             // spell-check underline). Selecting over it would fail, so finalise it first —
             // finishComposingText() commits the text without changing it.
-            val hadComposing = state.content.composing.isValid
-            if (hadComposing) ic.finishComposingText()
+            // Committing any pending composition is a no-op when there is none, and without it a
+            // trailing underlined word would stay outside the selection and be left behind.
+            ic.finishComposingText()
 
             val start = state.content.selection.start
             val end = state.content.selection.end
