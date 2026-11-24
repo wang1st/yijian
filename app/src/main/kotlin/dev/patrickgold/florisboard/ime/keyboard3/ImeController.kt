@@ -130,6 +130,9 @@ class ImeController(
     /** Reads [text] aloud via DeepSeek TTS. */
     fun speak(text: String) = translationManager.speak(text)
 
+    /** True while the keyboard is in Chinese (pinyin) mode. */
+    val pinyinActive get() = pinyin.active
+
     /** Non-null while the last accepted translation can still be undone. */
     val translationUndoable get() = translationManager.undoable
 

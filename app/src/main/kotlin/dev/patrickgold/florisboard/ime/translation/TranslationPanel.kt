@@ -527,6 +527,29 @@ private fun PinyinPanel(
             }
             Divider(onSurface)
         }
+        // A persistent mode line: in pinyin mode the keyboard types Chinese, which the user must
+        // be able to see at a glance.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(3.dp)
+                    .heightIn(min = 12.dp)
+                    .clip(RoundedCornerShape(1.5.dp))
+                    .background(onSurface.copy(alpha = 0.35f)),
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "中文输入",
+                color = onSurface.copy(alpha = 0.6f),
+                fontSize = 11.sp,
+            )
+        }
+        Divider(onSurface)
         // Candidates, horizontally scrollable
         Row(
             modifier = Modifier

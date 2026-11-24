@@ -6,11 +6,16 @@
     android:supportsSwitchingToNextInputMethod="true"
     tools:targetApi="r">
 
-    <!-- Add default system subtype so we can properly set the icon and label -->
+    <!--
+      A subtype without a locale shows up as an anonymous duplicate entry in some IME pickers
+      (WeChat's, for one). Declaring an explicit locale keeps it a single, labelled entry.
+    -->
     <subtype
         android:label="@string/floris_app_name"
         android:icon="@mipmap/floris_app_icon"
         android:imeSubtypeMode="keyboard"
+        android:imeSubtypeLocale="en_US"
+        android:languageTag="en-US"
         android:imeSubtypeExtraValue="AsciiCapable"
         android:isAsciiCapable="true"
         android:overridesImplicitlyEnabledSubtype="true"/>
