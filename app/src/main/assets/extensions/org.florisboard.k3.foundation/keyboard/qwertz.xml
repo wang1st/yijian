@@ -39,7 +39,7 @@
         <key id="enter" output="@k3:action/enter" width="1.6" />
         <!-- Enter translates; Shift+Enter (or long-press) inserts a newline -->
         <key id="enter-translate" output="@k3:action/enter" longPressKeyIds="enter-newline" width="1.6" />
-        <key id="enter-newline" output="\n" />
+        <key id="enter-newline" output="\u{000A}" />
         <key id="enter-narrow" output="@k3:action/enter" width="1.55" />
         <key id="voice" output="@fl:action/voice_input" width="1.15" />
         <key id="pinyin" output="@fl:action/toggle_pinyin"
