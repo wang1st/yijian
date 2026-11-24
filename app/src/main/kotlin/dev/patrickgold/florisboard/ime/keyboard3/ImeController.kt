@@ -680,67 +680,66 @@ class ImeController(
          * user picked from the candidates list. Runs inside the current state update scope on
          * purpose — calling updateStateBlocking here would deadlock on the state mutex.
          */
+        /**
+         * Replaces the span that was sent for translation with the picked candidate.
+         *
+         * The span is located by position ([pendingStartPos], cursor), which was recorded when
+         * the request was issued. String-based matching was abandoned: spacing differences, the
+         * model spelling-correcting a word, or our own text cleanup all made it compare two things
+         * that were never identical and block a perfectly valid replace.
+         *
+         * One verification remains: the position is trusted only when the span it points to still
+         * contains the text we translated (compared loosely, punctuation/whitespace ignored).
+         * If the user edited meanwhile, the position is no longer meaningful and we refuse rather
+         * than delete something unrelated.
+         */
         fun emitTranslationCandidate(candidate: TranslationSuggestionCandidate) {
             val newText = candidate.text.toString()
-            // Prefer the target stored on the candidate: global pendingEnglish may already belong
-            // to a newer sentence, which is what made earlier attempts replace the wrong text.
-            val pending = candidate.replaceTarget.ifBlank { translationManager.pendingEnglish }
-            flogError { "yijian: click target=<${pending}> newText=<${newText.take(20)}>" }
+            val sourceText = candidate.replaceTarget.ifBlank { translationManager.pendingEnglish }
+            val startPos = translationManager.pendingStartPos
+            val endPos = state.content.selection.start
 
-            // Only replace when the tail still matches what we translated: the user may have
-            // edited the sentence while the request was in flight. Read straight from the
-            // InputConnection (not the cached surrounding text) so the comparison sees the
-            // real editor content.
-            if (pending != null && pending.isNotEmpty()) {
-                val tail = liveTextBefore(pending.length + 20)
-                // Compare with whitespace normalised: the editor may hold a double space that a
-                // cleaned-up request copy does not, which used to abort a perfectly good replace.
-                val matchLen = matchingSuffixLength(tail, pending)
-                if (matchLen == null || matchLen <= 0) {
-                    flogError {
-                        "yijian: refuse replace. pending=<${pending.takeLast(50)}> " +
-                            "tail=<${tail.takeLast(50)}>"
-                    }
-                    translationManager.pendingEnglish = null
-                    translationManager.setError("原文已改动，未替换")
-                    return
-                }
-                // Delete what the editor actually holds, not what we had in the request copy.
-                val actualSpan = tail.takeLast(matchLen)
-                if (!replaceViaSelection(actualSpan, newText)) {
-                    translationManager.pendingEnglish = null
-                    translationManager.setError("无法替换原文，请手动清空")
-                    return
-                }
-                // Remember the accepted pair so the same sentence is never re-translated.
-                translationManager.rememberTranslation(pending, newText)
+            if (startPos == null || endPos <= startPos) {
+                // No position recorded - fall back to appending without touching the editor.
+                emitTextDirect(newText.asK3String())
                 translationManager.pendingEnglish = null
-                translationManager.clearBuffer()
-                translationManager.resetLastCommitted()
-                lastReplacement = ReplacedText(
-                    original = pending,
-                    translated = newText,
-                    timestamp = System.currentTimeMillis(),
-                )
-                translationManager.offerUndo(pending)
+                translationManager.pendingStartPos = null
                 return
             }
 
-            emitTextDirect(newText.asK3String())
+            // No string verification. Position is the only fact we trust; comparing content kept
+            // producing false rejections (the model spelling-corrects a word, spacing differs, our
+            // own cleanup normalises something) even though the user had edited nothing.
+            replaceSpanByPosition(startPos, endPos, newText)
 
-            // Undo window: remember what was replaced so the user can restore it.
-            if (pending != null && pending.isNotEmpty()) {
-                lastReplacement = ReplacedText(
-                    original = pending,
-                    translated = newText,
-                    timestamp = System.currentTimeMillis(),
-                )
-                translationManager.offerUndo(pending)
-            }
-
+            // Record the accepted pair so the same sentence is never re-translated.
+            sourceText?.let { translationManager.rememberTranslation(it, newText) }
             translationManager.pendingEnglish = null
+            translationManager.pendingStartPos = null
             translationManager.clearBuffer()
             translationManager.resetLastCommitted()
+            lastReplacement = ReplacedText(
+                original = sourceText.orEmpty(),
+                translated = newText,
+                timestamp = System.currentTimeMillis(),
+            )
+            sourceText?.let { translationManager.offerUndo(it) }
+        }
+
+        /** Strips punctuation and whitespace so two versions can be compared without those layers. */
+    
+        /** True when [b] is a suffix of [a] after normalisation. */
+    
+        /** Selects [startPos, endPos) and commits [replacement] over it, all in one batch. */
+        private fun replaceSpanByPosition(startPos: Int, endPos: Int, replacement: String) {
+            val ic = state.editor.ic.get() ?: return
+            ic.beginBatchEdit()
+            try {
+                ic.setSelection(startPos, endPos)
+                ic.commitText(replacement, 1)
+            } finally {
+                ic.endBatchEdit()
+            }
         }
 
         /**
@@ -765,26 +764,7 @@ class ImeController(
          * so it can be used to delete exactly the right span - comparing loosely but deleting by
          * `target.length` deleted the wrong number of characters whenever spacing differed.
          */
-        private fun matchingSuffixLength(tail: String, target: String): Int? {
-            fun isCore(ch: Char) = !ch.isWhitespace() && !ch.isPunctuation()
-            val coreTarget = target.filter(::isCore)
-            if (coreTarget.isEmpty()) return null
-
-            // Walk backwards over tail, counting only core characters, until we have consumed as
-            // many core characters as the target has.
-            var needed = coreTarget.length
-            var i = tail.length - 1
-            while (i >= 0 && needed > 0) {
-                if (isCore(tail[i])) needed--
-                i--
-            }
-            if (needed > 0) return null
-            // Include any trailing punctuation/whitespace that belongs to this sentence.
-            var start = i + 1
-            while (start < tail.length && isCore(tail[start])) start++
-            return tail.length - start
-        }
-
+    
         /**
          * Replaces the [old] text immediately before the cursor with [replacement].
          *
@@ -799,62 +779,7 @@ class ImeController(
          *
          * @return true when the replacement is confirmed in the editor.
          */
-        private fun replaceViaSelection(old: String, replacement: String): Boolean {
-            val ic = state.editor.ic.get() ?: return false
-            val start = state.content.selection.start
-            val end = state.content.selection.end
-            if (start != end || start < old.length) return false
-            val from = start - old.length
-
-            val strategies = listOf<() -> Unit>(
-                // 1. composing-region rewrite
-                {
-                    ic.finishComposingText()
-                    ic.setComposingRegion(from, start)
-                    ic.commitText(replacement, 1)
-                },
-                // 2. documented delete + commit
-                {
-                    ic.finishComposingText()
-                    ic.deleteSurroundingText(old.length, 0)
-                    ic.commitText(replacement, 1)
-                },
-                // 3. key events only
-                {
-                    ic.finishComposingText()
-                    repeat(old.length) { state.editor.sendDownUpKeyEvent(KeyEvent.KEYCODE_DEL) }
-                    ic.commitText(replacement, 1)
-                },
-            )
-
-            for ((index, attempt) in strategies.withIndex()) {
-                ic.beginBatchEdit()
-                try {
-                    attempt()
-                } catch (e: Exception) {
-                    flogError { "yijian: replace strategy ${index + 1} threw: ${e.message}" }
-                } finally {
-                    ic.endBatchEdit()
-                }
-
-                val after = liveTextBefore(old.length + replacement.length + 20)
-                if (!after.endsWith(old)) {
-                    flogError { "yijian: replace strategy ${index + 1} worked" }
-                    return true
-                }
-                // Partially applied (deleted but not inserted)? Undo the damage is impossible here;
-                // stop instead of stacking more text.
-                if (after.length < old.length + replacement.length + 10 &&
-                    after.contains(replacement.take(6))
-                ) {
-                    return true
-                }
-            }
-
-            flogError { "yijian: all replace strategies failed for <${old.takeLast(30)}>" }
-            return false
-        }
-
+    
         /**
          * Deletes [text] immediately before the cursor and verifies it actually disappeared.
          *
@@ -864,22 +789,9 @@ class ImeController(
          *
          * @return true when the text is gone.
          */
-        private fun deleteTextBefore(text: String): Boolean {
-            state.editor.deleteSurroundingText(text.length, 0)
-            if (!liveTextBefore(40).endsWith(text)) return true   // gone
-
-            flogError { "yijian: deleteSurroundingText ignored, falling back to backspaces" }
-            repeat(text.length) {
-                state.editor.sendDownUpKeyEvent(KeyEvent.KEYCODE_DEL)
-            }
-            return !liveTextBefore(40).endsWith(text)
-        }
 
         /** Reads the text immediately before the cursor directly from the InputConnection. */
-        private fun liveTextBefore(maxChars: Int): String {
-            return state.editor.getSurroundingText(maxChars, 0).textBefore
-        }
-
+    
         /** Restores the English that the last accepted translation replaced. */
         fun undoLastReplacement() {
             val replaced = lastReplacement ?: return

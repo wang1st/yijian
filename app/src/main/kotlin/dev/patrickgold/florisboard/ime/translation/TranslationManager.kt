@@ -112,6 +112,16 @@ class TranslationManager(
     @Volatile internal var pendingEnglish: String? = null
 
     /**
+     * Cursor position where the text-to-translate began.
+     *
+     * The replacement target is the span [pendingStartPos, cursor] at click time - an exact
+     * location rather than a string to find. String comparisons kept failing on spacing or
+     * spelling-correction differences; positions are factual and cannot drift in that way.
+     * Set when a request is issued, cleared when the span is accepted or the user cancels.
+     */
+    @Volatile internal var pendingStartPos: Int? = null
+
+    /**
      * Every piece of text that is currently in the editor *in translation form*: the range it
      * occupies and the translation now sitting there.
      *
@@ -445,6 +455,10 @@ class TranslationManager(
             flogError { "yijian: already translated, reusing candidates" }
             return
         }
+
+        // Record where the to-be-translated span begins so the replacement can target
+        // [pendingStartPos, cursor] by position rather than by string matching.
+        pendingStartPos = state.content.selection.start - raw.length
 
         val context = beforeCursor.dropLast(raw.length).takeLast(200)
         translateSentence(raw, state, context)
