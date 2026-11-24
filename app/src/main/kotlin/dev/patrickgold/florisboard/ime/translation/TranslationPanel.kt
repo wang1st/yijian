@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.sp
 import dev.patrickgold.florisboard.ime.keyboard3.LocalImeController
 import dev.patrickgold.florisboard.ime.nlp.SuggestionCandidate
 import dev.patrickgold.florisboard.nlpManager
+import org.k3lp.lib.text.asK3String
 
 /** Minimum Android touch target. */
 private val TouchTarget = 48.dp
