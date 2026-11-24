@@ -378,6 +378,7 @@ class ImeController(
             }
             resetContent(newSelection, state.editor.getSurroundingText(50, 10))
             expectedContentQueue.push(state.content)
+            translationManager.invalidateStaleRequest(state.editor)
         }
 
         override fun emit(value: K3StringOrDescriptor) {

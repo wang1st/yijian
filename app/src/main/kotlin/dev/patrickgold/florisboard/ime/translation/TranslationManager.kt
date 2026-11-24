@@ -109,6 +109,16 @@ class TranslationManager(
         clearVoiceStatus()
     }
 
+    /** Pasted text and other external edits shift the editor; drop candidates that no longer match. */
+    fun invalidateStaleRequest(editor: ImeEditor) {
+        val range = pendingRange ?: return
+        val window = editor.ic.get()?.translationWindow(range.text.length + 40) ?: return
+        val stale = window.selected.isNotEmpty() ||
+            !window.before.endsWith(range.text) ||
+            window.start != range.end
+        if (stale) dismissRequest()
+    }
+
     fun isCurrent(candidate: TranslationSuggestionCandidate) =
         candidate.requestId == requestId && candidate in candidates.value
 

@@ -88,14 +88,11 @@ internal fun InputConnection.replaceTranslation(range: TranslationRange, replace
             Log.e(tag, "setSelection rejected")
             return false
         }
-        // Verify the selection directly. translationWindow(0) returns null on editors that
-        // report nothing for a zero-length window, which used to abort a perfectly good replace.
-        val selected = getSelectedText(0)?.toString()
-        if (selected != range.text) {
-            Log.e(tag, "selection mismatch: got '${selected}' expected '${range.text}'")
-            runCatching { setSelection(range.end, range.end) }
-            return false
-        }
+        // Do not re-read the selection here: inside a batch edit some editors have not yet
+        // reflected setSelection into getSelectedText (returned null), which used to abort a
+        // perfectly good replace intermittently. commitText replaces the current selection,
+        // and a successful setSelection is sufficient; the post-commit verification below
+        // catches real failures.
         if (!commitText(replacement, 1)) {
             // Some editors reject the commit while leaving the source highlighted; put the cursor
             // back at the end of the source so the user is not left staring at a stray selection.
