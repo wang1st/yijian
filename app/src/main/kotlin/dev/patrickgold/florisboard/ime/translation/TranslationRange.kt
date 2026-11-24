@@ -17,6 +17,7 @@
 package dev.patrickgold.florisboard.ime.translation
 
 import android.os.Build
+import android.util.Log
 import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputConnection
 
@@ -72,22 +73,48 @@ internal fun InputConnection.translationWindow(limit: Int): EditorWindow? {
 
 /** Commit once, only after the editor confirms that the exact original range is selected. */
 internal fun InputConnection.replaceTranslation(range: TranslationRange, replacement: String): Boolean {
-    if (translationWindow(range.text.length)?.atEndOf(range) != true) return false
+    val tag = "YIJIAN-REPLACE"
+    if (translationWindow(range.text.length)?.atEndOf(range) != true) {
+        Log.e(tag, "pre-check failed: editor does not end with the source at ${range.start}")
+        return false
+    }
     beginBatchEdit()
     try {
-        if (!finishComposingText() || !setSelection(range.start, range.end)) return false
-        val selection = translationWindow(0)
-        if (selection?.start != range.start || selection.selected != range.text) return false
+        if (!finishComposingText()) {
+            Log.e(tag, "finishComposingText rejected")
+            return false
+        }
+        if (!setSelection(range.start, range.end)) {
+            Log.e(tag, "setSelection rejected")
+            return false
+        }
+        // Verify the selection directly. translationWindow(0) returns null on editors that
+        // report nothing for a zero-length window, which used to abort a perfectly good replace.
+        val selected = getSelectedText(0)?.toString()
+        if (selected != range.text) {
+            Log.e(tag, "selection mismatch: got '${selected}' expected '${range.text}'")
+            runCatching { setSelection(range.end, range.end) }
+            return false
+        }
         if (!commitText(replacement, 1)) {
-            // Some editors reject the command while leaving the source highlighted.
-            val after = translationWindow(0)
-            if (after?.start == range.start && after.selected == range.text) {
-                setSelection(range.end, range.end)
-            }
+            // Some editors reject the commit while leaving the source highlighted; put the cursor
+            // back at the end of the source so the user is not left staring at a stray selection.
+            Log.e(tag, "commitText rejected")
+            runCatching { setSelection(range.end, range.end) }
             return false
         }
     } finally {
         endBatchEdit()
     }
-    return translationWindow(replacement.length)?.atEndOf(range.copy(text = replacement)) == true
+
+    // Verify with getTextBeforeCursor, which reads synchronously. The surrounding-text window can
+    // still describe the pre-commit state right after endBatchEdit on some editors, which made a
+    // successful replace look like a failure ("未能确认替换结果") and left the source selected.
+    val before = getTextBeforeCursor(replacement.length + 2, 0)?.toString().orEmpty()
+    if (before.endsWith(replacement)) return true
+
+    // Fall back to the window (covers editors that only report through surrounding text).
+    val confirmed = translationWindow(replacement.length)?.atEndOf(range.copy(text = replacement)) == true
+    if (!confirmed) Log.e(tag, "post-commit verification failed")
+    return confirmed
 }
