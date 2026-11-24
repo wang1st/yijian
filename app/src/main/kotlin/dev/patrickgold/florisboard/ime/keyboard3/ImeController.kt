@@ -431,6 +431,7 @@ class ImeController(
         fun translationClearAll() {
             translationManager.clearBuffer()
             translationManager.pendingEnglish = null
+            translationManager.clearTranslationMark()
             translationManager.resetLastCommitted()
         }
 
@@ -682,6 +683,7 @@ class ImeController(
                     return
                 }
                 translationManager.pendingEnglish = null
+                translationManager.clearTranslationMark()
                 translationManager.clearBuffer()
                 translationManager.resetLastCommitted()
                 lastReplacement = ReplacedText(

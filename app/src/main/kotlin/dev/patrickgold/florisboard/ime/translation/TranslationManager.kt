@@ -112,6 +112,26 @@ class TranslationManager(
     @Volatile internal var pendingEnglish: String? = null
 
     /**
+     * Text that has already been translated and is awaiting the user's choice.
+     *
+     * Pressing Enter twice must not send the same sentence to the model again: the second press
+     * reuses the candidates already on screen. Cleared as soon as the text is replaced, cleared,
+     * or the editor no longer ends with it.
+     */
+    @Volatile internal var translatedSource: String? = null
+
+    /** True when [text] is what we already translated and have not replaced yet. */
+    fun isAlreadyTranslated(text: String): Boolean {
+        val previous = translatedSource ?: return false
+        return previous.trim() == text.trim()
+    }
+
+    /** Forgets the 「already translated」 marker, e.g. after the text was replaced or cleared. */
+    fun clearTranslationMark() {
+        translatedSource = null
+    }
+
+    /**
      * Pre-edit buffer: while translation is enabled, typed text does NOT go to the target app.
      * It accumulates here and is surfaced via [preeditText] in the IME panel; it only reaches
      * the editor when the user picks a translation or dismisses the panel.
@@ -385,6 +405,12 @@ class TranslationManager(
             )
             return
         }
+        // Pressing Enter again on the same unpublished sentence must not re-request it.
+        if (isAlreadyTranslated(raw)) {
+            flogError { "yijian: already translated, reusing candidates" }
+            return
+        }
+
         val context = beforeCursor.dropLast(raw.length).takeLast(200)
         translateSentence(raw, state, context)
     }
@@ -699,6 +725,7 @@ class TranslationManager(
             // earlier attempts re-derived the span from the live text and ended up swallowing
             // neighbouring sentences or already-translated Chinese.
             pendingEnglish = english
+            translatedSource = english
             flogError { "yijian: pending=<${english.takeLast(50)}> len=${english.length}" }
         }
         // Offer the interpretations in the smartbar
