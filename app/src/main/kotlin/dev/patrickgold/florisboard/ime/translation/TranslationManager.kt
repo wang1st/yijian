@@ -355,17 +355,28 @@ class TranslationManager(
             return
         }
 
-        // A trailing word typed without a space is still an uncommitted composing region; its
-        // text is not reliably part of getTextBeforeCursor, which is why only the underlined part
-        // used to be read. Finalise the composition first so the whole sentence is visible.
-        state.editor.ic.get()?.finishComposingText()
+        // Read first, then fall back. Finalising the composition unconditionally used to commit
+        // the trailing word and shift the cursor, so the subsequent read came back stale and the
+        // request reported "nothing to translate". Only finish composing when the first read
+        // genuinely comes back empty.
+        var beforeCursor = state.editor.getSurroundingText(MAX_TRANSLATE_CHARS + 40, 0).textBefore
+        if (beforeCursor.isBlank()) {
+            state.editor.ic.get()?.finishComposingText()
+            beforeCursor = state.editor.getSurroundingText(MAX_TRANSLATE_CHARS + 40, 0).textBefore
+        }
 
-        // S1: text lives in the editor. Take the trailing sentence *verbatim* — no trimming —
-        // because its exact length is what gets deleted when the user accepts a translation.
-        val beforeCursor = state.editor.getSurroundingText(MAX_TRANSLATE_CHARS + 40, 0).textBefore
+        // Take the trailing sentence *verbatim* — its exact length is what gets deleted when the
+        // user accepts a translation.
         val raw = trailingSentenceRaw(beforeCursor)
         if (raw.isBlank() || !hasTranslatableContent(raw, requireTwoWords = false)) {
-            setStatus(Status.ERROR, "没有可翻译的英文")
+            flogError {
+                "yijian: nothing to translate. read=${beforeCursor.length} chars, " +
+                    "tail=<${raw.takeLast(60)}> tailLen=${raw.length}"
+            }
+            setStatus(
+                Status.ERROR,
+                if (beforeCursor.isEmpty()) "读不到输入框内容，重试一次" else "没有可翻译的英文",
+            )
             return
         }
         val context = beforeCursor.dropLast(raw.length).takeLast(200)

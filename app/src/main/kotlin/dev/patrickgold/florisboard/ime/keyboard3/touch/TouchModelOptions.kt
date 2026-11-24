@@ -28,6 +28,8 @@ data class TouchModelOptions(
     val multiTapHighlightEnabled: Boolean,
     val flickKeyHintEnabled: Boolean,
     val flickKeyHintPlacement: FlickKeyHintPlacement,
+    /** True while pinyin (Chinese) input is active; drives the 中/英 key label. */
+    val pinyinActive: Boolean = false,
 ) {
     companion object {
         val Default = TouchModelOptions(

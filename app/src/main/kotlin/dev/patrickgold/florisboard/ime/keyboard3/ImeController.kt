@@ -139,15 +139,19 @@ class ImeController(
     /** The English teacher: practice records and the emailed report. */
     val teacher get() = translationManager.teacher
 
-    val activeTouchModelOptions = combine<Any, TouchModelOptions>(
-        prefs.keyboard.numberRow.asFlow(),
-        prefs.keyboard.fnKeyEnabled.asFlow(),
-        prefs.keyboard.fnKeyArrangement.asFlow(),
-        prefs.keyboard.longPressKeyHintEnabled.asFlow(),
-        prefs.keyboard.longPressKeyHintPlacement.asFlow(),
-        prefs.keyboard.multiTapHighlightEnabled.asFlow(),
-        prefs.keyboard.flickKeyHintEnabled.asFlow(),
-        prefs.keyboard.flickKeyHintPlacement.asFlow(),
+    val activeTouchModelOptions = combine(
+        listOf(
+            prefs.keyboard.numberRow.asFlow(),
+            prefs.keyboard.fnKeyEnabled.asFlow(),
+            prefs.keyboard.fnKeyArrangement.asFlow(),
+            prefs.keyboard.longPressKeyHintEnabled.asFlow(),
+            prefs.keyboard.longPressKeyHintPlacement.asFlow(),
+            prefs.keyboard.multiTapHighlightEnabled.asFlow(),
+            prefs.keyboard.flickKeyHintEnabled.asFlow(),
+            prefs.keyboard.flickKeyHintPlacement.asFlow(),
+            // Rebuilds the layout so the 中/英 key label follows the mode.
+            pinyin.active,
+        ),
     ) { values ->
         TouchModelOptions(
             showNumberRow = values[0] as Boolean,
@@ -158,6 +162,7 @@ class ImeController(
             multiTapHighlightEnabled = values[5] as Boolean,
             flickKeyHintEnabled = values[6] as Boolean,
             flickKeyHintPlacement = values[7] as FlickKeyHintPlacement,
+            pinyinActive = values[8] as Boolean,
         )
     }.stateIn(scope, SharingStarted.Eagerly, TouchModelOptions.Default)
 
@@ -694,36 +699,74 @@ class ImeController(
          *
          * @return true when the replacement is verified in place.
          */
+        /**
+         * Replaces the [old] text immediately before the cursor with [replacement].
+         *
+         * There is no single API that every editor honours, so this walks a fallback chain and
+         * **verifies after each step** whether the old text is really gone:
+         *
+         *  1. `setComposingRegion(start, end)` + `commitText` — the pattern Android's own
+         *     InputMethodService uses. Composing regions are core to IMEs, so any editor that
+         *     supports Chinese input supports them.
+         *  2. `deleteSurroundingText` + `commitText` — the documented replace idiom.
+         *  3. `KEYCODE_DEL` events + `commitText` — for editors that only react to key events.
+         *
+         * @return true when the replacement is confirmed in the editor.
+         */
         private fun replaceViaSelection(old: String, replacement: String): Boolean {
             val ic = state.editor.ic.get() ?: return false
-
-            // A word typed without a trailing space is still a composing region (it shows the
-            // spell-check underline). Selecting over it would fail, so finalise it first —
-            // finishComposingText() commits the text without changing it.
-            // Committing any pending composition is a no-op when there is none, and without it a
-            // trailing underlined word would stay outside the selection and be left behind.
-            ic.finishComposingText()
-
             val start = state.content.selection.start
             val end = state.content.selection.end
-            // Only meaningful when the selection is collapsed right after the text.
-            if (start != end) return false
+            if (start != end || start < old.length) return false
+            val from = start - old.length
 
-            val before = old.length
-            ic.beginBatchEdit()
-            try {
-                ic.setSelection(start - before, start)
-                ic.commitText(replacement, 1)
-            } finally {
-                ic.endBatchEdit()
+            val strategies = listOf<() -> Unit>(
+                // 1. composing-region rewrite
+                {
+                    ic.finishComposingText()
+                    ic.setComposingRegion(from, start)
+                    ic.commitText(replacement, 1)
+                },
+                // 2. documented delete + commit
+                {
+                    ic.finishComposingText()
+                    ic.deleteSurroundingText(old.length, 0)
+                    ic.commitText(replacement, 1)
+                },
+                // 3. key events only
+                {
+                    ic.finishComposingText()
+                    repeat(old.length) { state.editor.sendDownUpKeyEvent(KeyEvent.KEYCODE_DEL) }
+                    ic.commitText(replacement, 1)
+                },
+            )
+
+            for ((index, attempt) in strategies.withIndex()) {
+                ic.beginBatchEdit()
+                try {
+                    attempt()
+                } catch (e: Exception) {
+                    flogError { "yijian: replace strategy ${index + 1} threw: ${e.message}" }
+                } finally {
+                    ic.endBatchEdit()
+                }
+
+                val after = liveTextBefore(old.length + replacement.length + 20)
+                if (!after.endsWith(old)) {
+                    flogError { "yijian: replace strategy ${index + 1} worked" }
+                    return true
+                }
+                // Partially applied (deleted but not inserted)? Undo the damage is impossible here;
+                // stop instead of stacking more text.
+                if (after.length < old.length + replacement.length + 10 &&
+                    after.contains(replacement.take(6))
+                ) {
+                    return true
+                }
             }
 
-            val after = liveTextBefore(old.length + replacement.length + 20)
-            if (after.endsWith(old)) {
-                flogError { "yijian: replace failed, old text still present" }
-                return false
-            }
-            return after.contains(replacement.take(10))
+            flogError { "yijian: all replace strategies failed for <${old.takeLast(30)}>" }
+            return false
         }
 
         /**

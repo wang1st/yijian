@@ -15,6 +15,7 @@
         <display keyId="space-numeric" display="@fl:icon/space_bar" />
         <display keyId="voice" display="🎤" />
         <display keyId="pinyin" display="中" />
+        <display keyId="pinyin-off" display="英" comment="shown while pinyin mode is active" />
         <display keyId="ime-switch" display="⌨" />
         <display keyId="enter-translate" display="译" />
         <display keyId="enter-newline" display="↵" />

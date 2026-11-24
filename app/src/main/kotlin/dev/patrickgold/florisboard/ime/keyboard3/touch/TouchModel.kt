@@ -339,7 +339,13 @@ private fun computeTouchKeyboard(
                         else -> key.flickId?.let { model.flicks.byFlickId[it] }
                     }
                     val attrs = if (isFnKey) options.fnKeyArrangement.simpleAction.asK3Key() else key
-                    val display = computeKeyDisplay(model, attrs)
+                    // The 中 key doubles as a mode indicator: while pinyin is active it reads
+                    // 英, telling the user what tapping it will switch to.
+                    val display = if (options.pinyinActive && attrs.id.value == "pinyin") {
+                        model.displays.byKeyId[K3KeyId("pinyin-off")]?.display ?: computeKeyDisplay(model, attrs)
+                    } else {
+                        computeKeyDisplay(model, attrs)
+                    }
                     val touchKey = TouchKey(
                         bounds = keyBoundsPx,
                         hitbox = hitbox,
