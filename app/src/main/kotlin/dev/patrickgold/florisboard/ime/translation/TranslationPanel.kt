@@ -73,6 +73,9 @@ fun TranslationPanel() {
 
     val preedit by imeController.translationPreedit.collectAsState()
     val undoable by imeController.translationUndoable.collectAsState()
+    val pinyinComposing by imeController.pinyin.composing.collectAsState()
+    val pinyinCandidates by imeController.pinyin.candidates.collectAsState()
+    val pinyinActive by imeController.pinyin.active.collectAsState()
     val status by imeController.translationStatus.collectAsState()
     val error by imeController.translationError.collectAsState()
     val voiceBusy by imeController.voiceBusy.collectAsState()
@@ -83,6 +86,27 @@ fun TranslationPanel() {
 
     val isTranslationCandidates = candidates.isNotEmpty() &&
         candidates.all { it is TranslationSuggestionCandidate }
+    // Pinyin mode takes over the panel: it is what the user is actively typing right now.
+    if (pinyinActive && (pinyinCandidates.isNotEmpty() || pinyinComposing.isNotEmpty())) {
+        PinyinPanel(
+            composing = pinyinComposing,
+            candidates = pinyinCandidates,
+            onPick = { word ->
+                imeController.updateStateBlocking {
+                    imeController.pinyin.commit(word, this)
+                }
+            },
+            onRaw = {
+                imeController.updateStateBlocking {
+                    val raw = imeController.pinyin.rawInput()
+                    imeController.pinyin.clear()
+                    if (raw.isNotEmpty()) emitTextDirect(raw.asK3String())
+                }
+            },
+        )
+        return
+    }
+
     val hasError = status == TranslationManager.Status.ERROR && error != null
     if (!isTranslationCandidates && preedit.isEmpty() && voiceMsg == null && !recording && !hasError) {
         return
@@ -452,5 +476,74 @@ private fun UndoRow(onSurface: androidx.compose.ui.graphics.Color, onUndo: () ->
             color = onSurface.copy(alpha = 0.75f),
             fontSize = 13.sp,
         )
+    }
+}
+
+/** Horizontal candidate strip for pinyin input, plus the composed pinyin above it. */
+@Composable
+private fun PinyinPanel(
+    composing: String,
+    candidates: List<String>,
+    onPick: (String) -> Unit,
+    onRaw: () -> Unit,
+) {
+    val onSurface = LocalContentColor.current
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(onSurface.copy(alpha = 0.06f)),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(3.dp)
+                .background(onSurface.copy(alpha = 0.18f)),
+        )
+        // The pinyin the user typed, so the composition is visible
+        if (composing.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 40.dp)
+                    .clickable(onClick = onRaw)
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = composing,
+                    color = onSurface.copy(alpha = 0.75f),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 15.sp,
+                    modifier = Modifier.weight(1f, fill = true),
+                )
+                Text(
+                    text = "用英文",
+                    color = onSurface.copy(alpha = 0.45f),
+                    fontSize = 12.sp,
+                )
+            }
+            Divider(onSurface)
+        }
+        // Candidates, horizontally scrollable
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            candidates.take(40).forEach { word ->
+                Box(
+                    modifier = Modifier
+                        .heightIn(min = 44.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable { onPick(word) }
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(text = word, color = onSurface, fontSize = 18.sp)
+                }
+            }
+        }
     }
 }

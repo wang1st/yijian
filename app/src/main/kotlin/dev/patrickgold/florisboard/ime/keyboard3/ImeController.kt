@@ -22,6 +22,7 @@ import android.text.TextUtils
 import android.view.KeyEvent
 import android.view.inputmethod.InputConnection
 import androidx.compose.runtime.staticCompositionLocalOf
+import dev.patrickgold.florisboard.FlorisApplication
 import dev.patrickgold.florisboard.FlorisImeService
 import dev.patrickgold.florisboard.app.FlorisPreferenceStore
 import dev.patrickgold.florisboard.ime.ImeUiMode
@@ -64,6 +65,7 @@ import org.k3lp.lib.text.K3Descriptor
 import org.k3lp.lib.text.K3String
 import org.k3lp.lib.text.K3StringOrDescriptor
 import org.k3lp.lib.text.asK3String
+import org.k3lp.lib.text.toText
 import org.k3lp.model.K3Model
 import org.k3lp.model.layer.K3LayerId
 import org.k3lp.runtime.K3Content
@@ -96,6 +98,9 @@ class ImeController(
     private val expectedContentQueue = ExpectedContentQueue()
     private var emitInterceptor = AtomicReference<EmitInterceptor?>(null)
     private val translationManager = TranslationManager(this)
+    val pinyin = dev.patrickgold.florisboard.ime.translation.pinyin.PinyinInput(
+        FlorisApplication.getHack()
+    )
 
     /** Current pre-edit buffer content (typed English that has not been sent to the app yet). */
     val translationPreedit get() = translationManager.preeditText
@@ -355,7 +360,13 @@ class ImeController(
         }
 
         override fun emitText(value: K3String) {
-            // S1: never consumed — the text goes straight to the editor and stays visible.
+            // Pinyin mode: Latin letters build a pinyin buffer instead of being committed, so
+            // the user can type Chinese mid-sentence without switching keyboards.
+            val text = value.toText()
+            if (text.length == 1 && pinyin.onLetter(text[0])) {
+                return
+            }
+            // S1: otherwise nothing is held back — text goes straight to the editor.
             translationManager.observeEmitText(value, this)
             super.emitText(value)
             expectedContentQueue.push(state.content)
@@ -448,6 +459,16 @@ class ImeController(
                 ImeActions.Translate -> translationManager.translateNow()
                 // The touch model emits once on press (start recording) and once on release
                 // (stop + transcribe), which gives push-to-talk for free.
+                ImeActions.TogglePinyin -> {
+                    pinyin.toggle()
+                    if (!pinyin.active.value) {
+                        // leaving pinyin mode: keep whatever was typed as text
+                        val raw = pinyin.rawInput()
+                        if (raw.isNotEmpty()) emitTextDirect(raw.asK3String())
+                        pinyin.clear()
+                    }
+                    reevaluateInputShiftState()
+                }
                 ImeActions.VoiceInput -> {
                     if (translationManager.recorder.isRecording) {
                         translationManager.stopVoiceAndTranslate()
@@ -511,6 +532,7 @@ class ImeController(
         }
 
         override fun emitBackspace() {
+            if (pinyin.onBackspace()) return
             translationManager.observeBackspace(this)
             super.emitBackspace()
             expectedContentQueue.push(state.content)
