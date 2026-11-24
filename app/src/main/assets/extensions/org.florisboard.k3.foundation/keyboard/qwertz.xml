@@ -15,10 +15,6 @@
         <display keyId="space-numeric" display="@fl:icon/space_bar" />
         <display keyId="voice" display="🎤" />
         <display keyId="pinyin" display="中" />
-        <display keyId="pinyin-off" display="英" comment="shown while pinyin mode is active" />
-        <display keyId="ime-switch" display="⌨" />
-        <display keyId="enter-translate" display="译" />
-        <display keyId="enter-newline" display="↵" />
     </displays>
 
     <keys>
@@ -37,14 +33,9 @@
         <key id="bksp" output="@k3:action/backspace" stretch="true" />
         <!-- Enter doubles as the translate key; Shift+Enter inserts a newline -->
         <key id="enter" output="@k3:action/enter" width="1.6" />
-        <!-- Enter translates; Shift+Enter (or long-press) inserts a newline -->
-        <key id="enter-translate" output="@k3:action/enter" longPressKeyIds="enter-newline" width="1.6" />
-        <key id="enter-newline" output="\u{000A}" />
         <key id="enter-narrow" output="@k3:action/enter" width="1.55" />
         <key id="voice" output="@fl:action/voice_input" width="1.15" />
-        <key id="pinyin" output="@fl:action/toggle_pinyin"
-             longPressKeyIds="ime-switch" width="1.0" />
-        <key id="ime-switch" output="@fl:action/show_input_method_picker" />
+        <key id="pinyin" output="@fl:action/toggle_pinyin" width="1.0" />
         <key id="space-no-stretch" output="\u{0020}" />
         <!-- Long-press the space bar to talk (push-to-talk voice input) -->
         <key id="voice-space" output=" " longPressKeyIds="voice" stretch="true" />
@@ -296,14 +287,14 @@
             <row keys="q w e r t y u i o p" />
             <row keys="a s d f g h j k l" />
             <row keys="base-to-shift z x c v b n m bksp" />
-            <row keys="symbol-1-narrow comma pinyin voice-space period enter-translate" />
+            <row keys="symbol-1-narrow comma pinyin voice-space period enter-narrow" />
         </layer>
 
         <layer id="shift">
             <row keys="Q W E R T Y U I O P" />
             <row keys="A S D F G H J K L" />
             <row keys="shift-to-base Z X C V B N M bksp" />
-            <row keys="symbol-1-narrow comma pinyin voice-space period enter-translate" />
+            <row keys="symbol-1-narrow comma pinyin voice-space period enter-narrow" />
         </layer>
 
         <layer id="symbol-1">
