@@ -39,9 +39,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -109,7 +116,7 @@ fun TranslationPanel() {
     }
 
     val teacherCard = candidates.firstOrNull()
-        ?.takeIf { it.correctedEnglish.isNotBlank() || it.note.isNotBlank() }
+        ?.takeIf { it.correctedEnglish.isNotBlank() || it.note.isNotBlank() || it.corrections.isNotEmpty() }
 
     TranslationPanelContent(
         preedit = preedit,
@@ -117,7 +124,6 @@ fun TranslationPanel() {
         error = if (status == TranslationManager.Status.ERROR) error else null,
         teacherCard = teacherCard,
         voiceMessage = if (recording) "🎤 正在录音…（松开结束）" else voiceMsg,
-        speakingText = candidates.firstOrNull()?.text?.toString().orEmpty(),
         onSpeak = { text -> imeController.speak(text) },
         candidates = candidates,
         onClick = { candidate ->
@@ -157,7 +163,6 @@ private fun TranslationPanelContent(
     error: String?,
     teacherCard: TranslationSuggestionCandidate?,
     voiceMessage: String?,
-    speakingText: String,
     onSpeak: (String) -> Unit,
     candidates: List<SuggestionCandidate>,
     onClick: (SuggestionCandidate) -> Unit,
@@ -221,6 +226,7 @@ private fun TranslationPanelContent(
                 Divider(onSurface)
                 TeacherCard(
                     card = teacherCard,
+                    original = teacherCard.range?.text ?: preedit,
                     onSurface = onSurface,
                     onSpeak = onSpeak,
                 )
@@ -415,38 +421,68 @@ private fun Divider(onSurface: androidx.compose.ui.graphics.Color) {
 @Composable
 private fun TeacherCard(
     card: TranslationSuggestionCandidate,
+    original: String,
     onSurface: androidx.compose.ui.graphics.Color,
     onSpeak: (String) -> Unit,
 ) {
-    // The natural phrasing only — no "老师版" label, and the sentence scrolls horizontally so a
-    // long correction never gets clipped to two lines. Spelling/grammar breakdown lives in the
-    // emailed report.
-    val best = card.correctedEnglish.ifBlank { card.note }
-    if (best.isBlank()) return
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 16.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = best,
-            color = onSurface.copy(alpha = 0.85f),
-            fontSize = 14.sp,
-            maxLines = 1,
-            softWrap = false,
-            modifier = Modifier
-                .weight(1f, fill = true)
-                .horizontalScroll(rememberScrollState()),
-        )
-        Box(
-            modifier = Modifier
-                .width(TouchTarget)
-                .height(TouchTarget)
-                .clickable { onSpeak(best) },
-            contentAlignment = Alignment.Center,
+    var expanded by remember(card.requestId) { mutableStateOf(false) }
+    val english = card.correctedEnglish
+    val toggleLabel = if (expanded) "收起英语讲解" else "展开英语讲解"
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(text = "🔊", fontSize = 16.sp)
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = TouchTarget)
+                    .clickable(role = Role.Button, onClickLabel = toggleLabel) { expanded = !expanded }
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = english.ifBlank { "英语讲解" },
+                    modifier = Modifier.weight(1f),
+                    color = onSurface.copy(alpha = 0.85f),
+                    fontSize = 14.sp,
+                    maxLines = if (expanded) Int.MAX_VALUE else 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = if (expanded) "收起" else "讲解",
+                    color = onSurface.copy(alpha = 0.75f),
+                    fontSize = 13.sp,
+                )
+            }
+            if (english.isNotBlank()) {
+                Box(
+                    modifier = Modifier
+                        .width(TouchTarget)
+                        .height(TouchTarget)
+                        .clickable(role = Role.Button) { onSpeak(english) }
+                        .semantics { contentDescription = "朗读英文" },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(text = "🔊", fontSize = 16.sp)
+                }
+            }
+        }
+        if (expanded) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                if (original.isNotBlank()) {
+                    Text("原文　$original", color = onSurface.copy(alpha = 0.75f), fontSize = 14.sp)
+                }
+                for (item in card.corrections) {
+                    Text("${item.wrong} → ${item.right}", color = onSurface, fontWeight = FontWeight.Medium)
+                    if (item.why.isNotBlank()) Text(item.why, color = onSurface, fontSize = 14.sp)
+                }
+                if (card.note.isNotBlank()) Text(card.note, color = onSurface, fontSize = 14.sp)
+            }
         }
     }
 }
@@ -489,7 +525,7 @@ private fun UndoRow(onSurface: androidx.compose.ui.graphics.Color, onUndo: () ->
         Text(text = "↩", color = onSurface.copy(alpha = 0.7f), fontSize = 15.sp)
         Spacer(modifier = Modifier.width(8.dp))
         Text(
-            text = "撤销，恢复英文",
+            text = "撤销，恢复原文",
             color = onSurface.copy(alpha = 0.75f),
             fontSize = 13.sp,
         )
