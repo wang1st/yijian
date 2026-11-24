@@ -91,6 +91,8 @@ data class QuickActionArrangement(
         val Default = QuickActionArrangement(
             stickyAction = QuickAction.InsertK3Descriptor(ImeActions.ExternalVoiceInput),
             dynamicActions = listOf(
+                // First in the row: switching to another IME and back is a frequent action.
+                QuickAction.InsertK3Descriptor(ImeActions.ShowInputMethodPicker),
                 QuickAction.InsertK3Descriptor(ImeActions.ToggleFloatingWindow),
                 QuickAction.InsertK3Descriptor(ImeActions.ToggleResizeMode),
                 QuickAction.InsertK3Descriptor(ImeActions.Undo),

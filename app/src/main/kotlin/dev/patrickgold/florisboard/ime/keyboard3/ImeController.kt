@@ -44,6 +44,7 @@ import dev.patrickgold.florisboard.ime.keyboard3.touch.TouchModelCache
 import dev.patrickgold.florisboard.ime.keyboard3.touch.TouchModelOptions
 import dev.patrickgold.florisboard.ime.media.emoji.EmojiSuggestionType
 import dev.patrickgold.florisboard.ime.nlp.BreakIterators
+import dev.patrickgold.florisboard.ime.smartbar.quickaction.QuickAction
 import dev.patrickgold.florisboard.ime.nlp.ClipboardSuggestionCandidate
 import dev.patrickgold.florisboard.ime.nlp.SuggestionCandidate
 import dev.patrickgold.florisboard.ime.text.key.KeyVariation
@@ -129,6 +130,31 @@ class ImeController(
 
     /** Reads [text] aloud via DeepSeek TTS. */
     fun speak(text: String) = translationManager.speak(text)
+
+    /**
+     * Guarantees the toolbar exposes a "switch input method" button.
+     *
+     * Editing QuickActionArrangement.Default only helps fresh installs: an existing
+     * smartbar__action_arrangement replaces it. This migrates an existing arrangement once by
+     * prepending the action when it is absent.
+     */
+    fun ensureImeSwitchAction() {
+        scope.launch {
+            val arrangement = prefs.smartbar.actionArrangement.get()
+            val already = arrangement.dynamicActions.any {
+                it is QuickAction.InsertK3Descriptor && it.descriptor == ImeActions.ShowInputMethodPicker
+            }
+            if (already) return@launch
+            prefs.smartbar.actionArrangement.set(
+                arrangement.copy(
+                    dynamicActions = listOf(
+                        QuickAction.InsertK3Descriptor(ImeActions.ShowInputMethodPicker),
+                    ) + arrangement.dynamicActions,
+                )
+            )
+            flogError { "yijian: added input-method switch to the smartbar" }
+        }
+    }
 
     /** True while the keyboard is in Chinese (pinyin) mode. */
     val pinyinActive get() = pinyin.active

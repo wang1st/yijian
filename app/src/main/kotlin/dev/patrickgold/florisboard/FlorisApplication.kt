@@ -149,6 +149,9 @@ class FlorisApplication : Application() {
             )
             Log.i("PREFS", resultNoBackupPrefs.toString())
             preferenceStoreLoaded.value = true
+            // Preferences are usable only after the store init above completes
+            runCatching { imeController.ensureImeSwitchAction() }
+                .onFailure { Log.e("YIJIAN", "smartbar migration failed", it) }
         }
         clipboardManager.value.initializeForContext(this)
         DictionaryManager.init(this)
