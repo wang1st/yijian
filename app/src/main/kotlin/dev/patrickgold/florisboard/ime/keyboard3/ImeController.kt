@@ -373,9 +373,8 @@ class ImeController(
             translationManager.maybeTranslateOnPunct(value)
         }
 
-        private data class ReplacedText(val original: String, val translated: String, val timestamp: Long)
+        /** Set right after a translation replaced text, cleared when the undo window expires. */
         private var lastReplacement: ReplacedText? = null
-        private val UNDO_WINDOW_MS = 5000L
 
         /**
          * Commits text straight into the target editor, bypassing the yijian pre-edit buffer.
@@ -831,6 +830,11 @@ class ImeController(
         private val NEWLINE_SEQ = "\n".asK3String()
     }
 }
+
+/** Text that a translation replaced, kept briefly so the user can undo. */
+internal data class ReplacedText(val original: String, val translated: String, val timestamp: Long)
+
+internal const val UNDO_WINDOW_MS = 5000L
 
 enum class OperationUnit {
     CHARACTERS,
