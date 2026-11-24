@@ -647,11 +647,21 @@ class ImeController(
                     translationManager.setError("原文已改动，未替换")
                     return
                 }
-                if (!deleteTextBefore(pending)) {
+                if (!replaceViaSelection(pending, newText)) {
                     translationManager.pendingEnglish = null
-                    translationManager.setError("无法删除原文，请手动清空")
+                    translationManager.setError("无法替换原文，请手动清空")
                     return
                 }
+                translationManager.pendingEnglish = null
+                translationManager.clearBuffer()
+                translationManager.resetLastCommitted()
+                lastReplacement = ReplacedText(
+                    original = pending,
+                    translated = newText,
+                    timestamp = System.currentTimeMillis(),
+                )
+                translationManager.offerUndo(pending)
+                return
             }
 
             emitTextDirect(newText.asK3String())
@@ -669,6 +679,40 @@ class ImeController(
             translationManager.pendingEnglish = null
             translationManager.clearBuffer()
             translationManager.resetLastCommitted()
+        }
+
+        /**
+         * Replaces [old] (immediately before the cursor) with [replacement] by selecting the span
+         * and committing the new text over it.
+         *
+         * The documented way to rewrite editor text is setSelection() + commitText(): commitText
+         * replaces the current selection, whereas deleteSurroundingText is optional for the editor
+         * to honour and is ignored outright by some apps (WeChat among them).
+         *
+         * @return true when the replacement is verified in place.
+         */
+        private fun replaceViaSelection(old: String, replacement: String): Boolean {
+            val ic = state.editor.ic.get() ?: return false
+            val start = state.content.selection.start
+            val end = state.content.selection.end
+            // Only meaningful when the selection is collapsed right after the text.
+            if (start != end) return false
+
+            val before = old.length
+            ic.beginBatchEdit()
+            try {
+                ic.setSelection(start - before, start)
+                ic.commitText(replacement, 1)
+            } finally {
+                ic.endBatchEdit()
+            }
+
+            val after = liveTextBefore(old.length + replacement.length + 20)
+            if (after.endsWith(old)) {
+                flogError { "yijian: replace failed, old text still present" }
+                return false
+            }
+            return after.contains(replacement.take(10))
         }
 
         /**
