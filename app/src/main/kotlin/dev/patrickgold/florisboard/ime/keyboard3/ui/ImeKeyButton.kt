@@ -16,6 +16,7 @@
 
 package dev.patrickgold.florisboard.ime.keyboard3.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
@@ -23,6 +24,7 @@ import androidx.compose.foundation.indication
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.material3.ripple
@@ -34,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import dev.patrickgold.florisboard.ime.keyboard3.LocalImeController
 import dev.patrickgold.florisboard.ime.keyboard3.interaction.InteractionKind
@@ -82,6 +85,7 @@ fun ImeKeyButton(
     val touchLayerId by remember { derivedStateOf { imeState.touchLayerId } }
     val inputShiftState by remember { derivedStateOf { imeState.flags.inputShiftState } }
     val model by remember { derivedStateOf { imeState.model } }
+    val pinyinActive by imeController.pinyin.active.collectAsState()
     val display = remember(model, output) { model.displays.byOutput[output]?.display ?: output }
 
     val isRepeatable = output.isRepeatable()
@@ -151,6 +155,15 @@ fun ImeKeyButton(
             },
         contentAlignment = Alignment.Center,
     ) {
+        // Mode indicator: the pinyin key is tinted while Chinese input is active, so the current
+        // language is readable at a glance instead of being implied by the key label.
+        if (pinyinActive && output == dev.patrickgold.florisboard.ime.keyboard3.ImeActions.TogglePinyin) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(Color(0xFF2E7D5B).copy(alpha = 0.55f)),
+            )
+        }
         content(display)
     }
 }
