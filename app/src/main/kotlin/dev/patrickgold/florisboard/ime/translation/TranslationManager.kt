@@ -585,7 +585,7 @@ class TranslationManager(
      *  replaces it in the editor. False for the pre-edit buffer flow, where the English never
      *  reached the editor.
      */
-    private fun applyTranslation(
+    private suspend fun applyTranslation(
         english: String,
         typedPunct: Char?,
         result: TranslationResult,
@@ -608,8 +608,24 @@ class TranslationManager(
             )
         }
         if (trackPending) {
-            // The English sits in the editor; remember it so a candidate click can replace it.
-            pendingEnglish = english + (typedPunct?.toString() ?: "")
+            // Remember exactly what the user has in the editor so a candidate click can replace
+            // it. Snapshot the live tail rather than reconstructing it from `english`: trimming,
+            // punctuation and whitespace differences would otherwise break the later match.
+            // InputConnection reads must happen on the main thread.
+            val beforeCursor = withContext(Dispatchers.Main) {
+                imeController.snapshotState().editor.getSurroundingText(english.length + 40, 0).textBefore
+            }
+            val actual = when {
+                beforeCursor.endsWith(english) -> english
+                else -> {
+                    // Fall back to the longest suffix of what we translated that is present.
+                    var len = minOf(english.length, beforeCursor.length)
+                    while (len > 0 && !beforeCursor.endsWith(english.takeLast(len))) len--
+                    if (len > 0) english.takeLast(len) else english
+                }
+            }
+            pendingEnglish = actual
+            flogError { "yijian: pending=<${actual.takeLast(60)}> measured=${actual.length}" }
         }
         // Offer the interpretations in the smartbar
         nlpManager.suggestDirectly(candidates.mapIndexed { i, t ->

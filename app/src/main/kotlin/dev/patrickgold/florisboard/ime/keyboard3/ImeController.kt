@@ -627,10 +627,16 @@ class ImeController(
             val pending = translationManager.pendingEnglish
 
             // Only replace when the tail still matches what we translated: the user may have
-            // edited the sentence while the request was in flight.
+            // edited the sentence while the request was in flight. Read straight from the
+            // InputConnection (not the cached surrounding text) so the comparison sees the
+            // real editor content.
             if (pending != null && pending.isNotEmpty()) {
-                val cur = state.editor.getSurroundingText(pending.length + 5, 0).textBefore
-                if (!cur.endsWith(pending)) {
+                val tail = liveTextBefore(pending.length + 40)
+                if (!tail.endsWith(pending)) {
+                    flogError {
+                        "yijian: replace skipped, tail mismatch. expected=<${pending.takeLast(40)}> " +
+                            "actual=<${tail.takeLast(40)}>"
+                    }
                     // Tail changed — do not touch the editor, just append the translation.
                     emitTextDirect(newText.asK3String())
                     translationManager.pendingEnglish = null
@@ -654,6 +660,11 @@ class ImeController(
             translationManager.pendingEnglish = null
             translationManager.clearBuffer()
             translationManager.resetLastCommitted()
+        }
+
+        /** Reads the text immediately before the cursor directly from the InputConnection. */
+        private fun liveTextBefore(maxChars: Int): String {
+            return state.editor.getSurroundingText(maxChars, 0).textBefore
         }
 
         /** Restores the English that the last accepted translation replaced. */
