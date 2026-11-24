@@ -95,6 +95,7 @@ fun QuickActionButton(
 /** Explicit icon for smartbar actions, which have no keyboard-model display entry. */
 private fun actionIcon(descriptor: K3StringOrDescriptor): K3StringOrDescriptor? {
     if (descriptor !is K3Descriptor) return null
+    android.util.Log.e("YIJIAN", "actionIcon: name=<${descriptor.name}>")
     return when (descriptor.name) {
         ImeActions.SwitchToPrevInputMethod.name,
         ImeActions.SwitchToNextInputMethod.name,
