@@ -175,6 +175,7 @@ class ImeController(
         prefs.keyboard.multiTapHighlightEnabled.asFlow(),
         prefs.keyboard.flickKeyHintEnabled.asFlow(),
         prefs.keyboard.flickKeyHintPlacement.asFlow(),
+        prefs.translation.enabled.asFlow(),
     ) { values ->
         TouchModelOptions(
             showNumberRow = values[0] as Boolean,
@@ -185,6 +186,7 @@ class ImeController(
             multiTapHighlightEnabled = values[5] as Boolean,
             flickKeyHintEnabled = values[6] as Boolean,
             flickKeyHintPlacement = values[7] as FlickKeyHintPlacement,
+            showTranslationKey = values[8] as Boolean,
         )
     }.stateIn(scope, SharingStarted.Eagerly, TouchModelOptions.Default)
 
@@ -318,7 +320,8 @@ class ImeController(
                 textAfter = info.getInitialTextAfterCursor(20)?.toString() ?: "",
             )
 
-            val rememberCapsLockState = prefs.typing.rememberCapsLockState.get() &&
+            val rememberCapsLockState = prefs.typing.shiftKeyBehavior.get() != ShiftKeyBehavior.SINGLE_LETTER &&
+                prefs.typing.rememberCapsLockState.get() &&
                 state.flags.inputShiftState == InputShiftState.CAPS_LOCK
 
             state = state.copy(
@@ -401,9 +404,7 @@ class ImeController(
             }
             // S1: otherwise nothing is held back — text goes straight to the editor.
             translationManager.observeEmitText(value, this)
-            super.emitText(value)
-            expectedContentQueue.push(state.content)
-            reevaluateInputShiftState()
+            emitTextDirect(value)
             translationManager.maybeTranslateOnPunct(value)
         }
 
@@ -412,7 +413,26 @@ class ImeController(
          * Used for the translation results themselves and for raw-buffer flushes.
          */
         fun emitTextDirect(value: K3String) {
-            super.emitText(value)
+            if (state.model.transforms.byType.isEmpty()) {
+                // The bundled layout emits literal text. k3's general transform path
+                // rewrites the whole input context, which document editors can append anew.
+                val text = java.text.Normalizer.normalize(value.toText(), java.text.Normalizer.Form.NFC)
+                if (state.editor.ic.get()?.commitText(text, 1) != true) return
+                val content = state.content
+                val surrounding = content.surroundingText.copy(
+                    textBefore = (content.surroundingText.textBefore + text).takeLast(50),
+                    textSelected = "",
+                )
+                // Used for key labels and deduplicating callbacks only. The host positions
+                // every literal edit at its live selection, even if a callback is late.
+                state = state.copy(content = K3Content(
+                    selection = K3TextRange(content.selection.min + text.length),
+                    surroundingText = surrounding,
+                    inputContext = surrounding.textBefore.asK3String(),
+                ))
+            } else {
+                super.emitText(value)
+            }
             expectedContentQueue.push(state.content)
             reevaluateInputShiftState()
         }
@@ -565,37 +585,24 @@ class ImeController(
         override fun emitBackspace() {
             if (pinyin.onBackspace()) return
             translationManager.observeBackspace(this)
-            super.emitBackspace()
-            expectedContentQueue.push(state.content)
+            if (state.model.transforms.byType.isEmpty()) {
+                // The editor owns selection, grapheme boundaries and cross-paragraph deletion.
+                expectedContentQueue.clear()
+                state.editor.sendDownUpKeyEvent(KeyEvent.KEYCODE_DEL)
+            } else {
+                super.emitBackspace()
+                expectedContentQueue.push(state.content)
+            }
         }
 
         override fun emitEnter() {
             val info = state.editor.info
-            // yijian: Enter translates, Shift+Enter inserts a newline. The shift state comes from
-            // the keyboard's own shift layer, so no physical key tracking is needed.
-            val isShiftPressed = state.flags.inputShiftState == InputShiftState.SHIFTED_MANUAL
-            if (isShiftPressed) {
-                emitEnterKey()
-                return
-            }
-            // S1: the text is already in the editor, so Enter always means "translate this".
-            if (prefs.translation.enabled.get()) {
-                translationManager.translateNow(state)
-                return
-            }
-            if (info.imeOptions.flagNoEnterAction || info.inputAttributes.flagTextMultiLine) {
+            val action = info.imeOptions.action
+            if (info.imeOptions.flagNoEnterAction || info.inputAttributes.flagTextMultiLine ||
+                action == ImeOptions.Action.NONE || action == ImeOptions.Action.UNSPECIFIED) {
                 emitEnterKey()
             } else {
-                when (val action = info.imeOptions.action) {
-                    ImeOptions.Action.UNSPECIFIED,
-                    ImeOptions.Action.DONE,
-                    ImeOptions.Action.GO,
-                    ImeOptions.Action.NEXT,
-                    ImeOptions.Action.PREVIOUS,
-                    ImeOptions.Action.SEARCH,
-                    ImeOptions.Action.SEND -> emitEnterAction(action)
-                    else -> emitEnterKey()
-                }
+                emitEnterAction(action)
             }
         }
 
@@ -613,6 +620,11 @@ class ImeController(
         }
 
         fun emitForwardDelete() {
+            if (state.model.transforms.byType.isEmpty()) {
+                expectedContentQueue.clear()
+                state.editor.sendDownUpKeyEvent(KeyEvent.KEYCODE_FORWARD_DEL)
+                return
+            }
             // TODO request additional text if too low on context length
             if (state.content.selection.isNotCollapsed()) {
                 emitBackspace()
@@ -755,6 +767,11 @@ class ImeController(
             val shiftKeyBehavior = prefs.typing.shiftKeyBehavior.get()
             val oldInputShiftState = state.flags.inputShiftState
             val newInputShiftState = when (shiftKeyBehavior) {
+                ShiftKeyBehavior.SINGLE_LETTER -> if (oldInputShiftState == InputShiftState.UNSHIFTED) {
+                    InputShiftState.SHIFTED_MANUAL
+                } else {
+                    InputShiftState.UNSHIFTED
+                }
                 ShiftKeyBehavior.CAPSLOCK_BY_DOUBLE_TAP -> when {
                     isDoubleTap -> InputShiftState.CAPS_LOCK
                     oldInputShiftState == InputShiftState.UNSHIFTED -> InputShiftState.SHIFTED_MANUAL
@@ -826,7 +843,7 @@ class ImeController(
             selection: K3TextRange,
             surroundingText: K3SurroundingText
         ): K3TextRange? {
-            if (selection.isNotCollapsed() || !state.flags.isComposingEnabled) {
+            if (model.transforms.byType.isEmpty() || selection.isNotCollapsed() || !state.flags.isComposingEnabled) {
                 return null
             }
             // TODO rework how we get the primary locale

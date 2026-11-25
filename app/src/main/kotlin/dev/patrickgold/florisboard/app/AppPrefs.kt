@@ -756,7 +756,7 @@ abstract class FlorisPreferenceModel : PreferenceModel() {
         )
         val shiftKeyBehavior = enum(
             key = "typing__shift_key_behavior",
-            default = ShiftKeyBehavior.CAPSLOCK_BY_DOUBLE_TAP,
+            default = ShiftKeyBehavior.SINGLE_LETTER,
         )
     }
 

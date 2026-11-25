@@ -198,7 +198,10 @@ private fun computeTouchKeyboard(
     options: TouchModelOptions,
 ): TouchKeyboard {
     val layers = layersGroup.layers
-    val keyPredicate = { key: K3Key -> options.fnKeyEnabled || key.id != TouchKey.FnKeyId }
+    val keyPredicate = { key: K3Key ->
+        (options.fnKeyEnabled || key.id != TouchKey.FnKeyId) &&
+            (options.showTranslationKey || key.output != ImeActions.Translate)
+    }
 
     val numberRow = if (options.showNumberRow) {
         val numberRowLayer = layers[ImeLayerIds.Numrow]

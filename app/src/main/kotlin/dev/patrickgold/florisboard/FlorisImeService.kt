@@ -456,13 +456,6 @@ class FlorisImeService : LifecycleInputMethodService() {
     }
 
     override fun onUpdateExtractingVisibility(info: EditorInfo?) {
-        if (info != null) {
-            val ic = WeakReference(currentInputConnection)
-            val editorInfo = FlorisEditorInfo.wrap(info)
-            imeController.updateStateBlocking {
-                handleStartInputView(ic, editorInfo)
-            }
-        }
         when (prefs.keyboard.landscapeInputUiMode.get()) {
             LandscapeInputUiMode.DYNAMICALLY_SHOW -> super.onUpdateExtractingVisibility(info)
             LandscapeInputUiMode.NEVER_SHOW -> isExtractViewShown = false

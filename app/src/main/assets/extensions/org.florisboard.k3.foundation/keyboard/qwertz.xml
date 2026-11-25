@@ -30,9 +30,9 @@
         <key id="symbol-2" layerId="symbol-2" width="1.5" />
 
         <key id="bksp" output="@k3:action/backspace" stretch="true" />
-        <!-- Enter doubles as the translate key; Shift+Enter inserts a newline -->
+        <key id="translate" output="@fl:action/translate" width="1.25" />
         <key id="enter" output="@k3:action/enter" width="1.6" />
-        <key id="enter-narrow" output="@k3:action/enter" width="1.55" />
+        <key id="enter-narrow" output="@k3:action/enter" width="1.15" />
         <key id="voice" output="@fl:action/voice_input" width="1.15" />
         <key id="pinyin" output="@fl:action/toggle_pinyin" width="1.0" />
         <key id="space-no-stretch" output="\u{0020}" />
@@ -286,28 +286,28 @@
             <row keys="q w e r t y u i o p" />
             <row keys="a s d f g h j k l" />
             <row keys="base-to-shift z x c v b n m bksp" />
-            <row keys="symbol-1-narrow comma pinyin voice-space period enter-narrow" />
+            <row keys="symbol-1-narrow comma pinyin voice-space period enter-narrow translate" />
         </layer>
 
         <layer id="shift">
             <row keys="Q W E R T Y U I O P" />
             <row keys="A S D F G H J K L" />
             <row keys="shift-to-base Z X C V B N M bksp" />
-            <row keys="symbol-1-narrow comma pinyin voice-space period enter-narrow" />
+            <row keys="symbol-1-narrow comma pinyin voice-space period enter-narrow translate" />
         </layer>
 
         <layer id="symbol-1">
             <row keys="1 2 3 4 5 6 7 8 9 0" />
             <row keys="at hash euro percent amp hyphen plus open-paren close-paren slash" />
             <row keys="symbol-2 asterisk double-quote apos colon semi-colon bang question bksp" />
-            <row keys="base comma numeric space period enter" />
+            <row keys="base comma numeric space period enter translate" />
         </layer>
 
         <layer id="symbol-2">
             <row keys="tilde grave pipe gap gap gap gap gap gap gap" />
             <row keys="yen pound dollar cent caret degree equal open-curly close-curly backslash" />
             <row keys="symbol-1 underscore gap gap gap gap open-square close-square bksp" />
-            <row keys="base open-angle numeric space close-angle enter" />
+            <row keys="base open-angle numeric space close-angle enter translate" />
         </layer>
 
         <layer id="numeric">
@@ -315,7 +315,7 @@
             <row keys="open-paren-numeric 4-numeric 5-numeric 6-numeric space-numeric" />
             <row keys="close-paren-numeric 7-numeric 8-numeric 9-numeric bksp-numeric" />
             <row
-                keys="base-numeric comma-numeric symbols-numeric 0-numeric equal-numeric period-numeric enter-numeric" />
+                keys="base-numeric comma-numeric symbols-numeric 0-numeric equal-numeric period-numeric enter-numeric translate" />
         </layer>
     </layers>
 

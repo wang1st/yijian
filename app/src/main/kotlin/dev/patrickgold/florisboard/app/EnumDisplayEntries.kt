@@ -93,6 +93,10 @@ private val ENUM_DISPLAY_ENTRIES = mapOf<Pair<KClass<*>, String>, @Composable ()
     ShiftKeyBehavior::class to DEFAULT to {
         listPrefEntries {
             entry(
+                key = ShiftKeyBehavior.SINGLE_LETTER,
+                label = stringRes(R.string.yijian_shift_single_letter),
+            )
+            entry(
                 key = ShiftKeyBehavior.CAPSLOCK_BY_DOUBLE_TAP,
                 label = stringRes(R.string.enum__capitalization_behavior__capslock_by_double_tap),
             )

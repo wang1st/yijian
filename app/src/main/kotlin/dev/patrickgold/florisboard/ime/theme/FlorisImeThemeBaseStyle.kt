@@ -66,11 +66,11 @@ val FlorisImeThemeBaseStyle = SnyggStylesheet.v2 {
         background = `var`("--surface-variant")
         foreground = `var`("--on-surface")
     }
-    FlorisImeUi.Key.elementName(ImeUiAttrs.Output.eqAnyOf(ImeActions.Enter)) {
+    FlorisImeUi.Key.elementName(ImeUiAttrs.Output.eqAnyOf(ImeActions.Translate)) {
         background = `var`("--primary")
         foreground = `var`("--on-surface")
     }
-    FlorisImeUi.Key.elementName(ImeUiAttrs.Output.eqAnyOf(ImeActions.Enter), selector = SnyggSelector.PRESSED) {
+    FlorisImeUi.Key.elementName(ImeUiAttrs.Output.eqAnyOf(ImeActions.Translate), selector = SnyggSelector.PRESSED) {
         background = `var`("--primary-variant")
         foreground = `var`("--on-surface")
     }

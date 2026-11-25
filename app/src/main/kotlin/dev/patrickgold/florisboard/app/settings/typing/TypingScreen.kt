@@ -70,6 +70,7 @@ fun TypingScreen() {
                 )
                 SwitchPreference(
                     prefs.typing.rememberCapsLockState,
+                    enabledIf = { prefs.typing.shiftKeyBehavior isNotEqualTo ShiftKeyBehavior.SINGLE_LETTER },
                     shapes = ListItemDefaults.segmentedShapes(1, count),
                     title = stringRes(R.string.pref__correction__remember_caps_lock_state__label),
                     summary = stringRes(R.string.pref__correction__remember_caps_lock_state__summary),

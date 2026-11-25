@@ -3,6 +3,9 @@ name: Translation editor regression tests
 on:
   pull_request:
     paths:
+      - 'app/src/main/kotlin/dev/patrickgold/florisboard/ime/keyboard3/**'
+      - 'app/src/main/assets/extensions/org.florisboard.k3.foundation/**'
+      - 'app/src/androidTest/kotlin/dev/patrickgold/florisboard/ime/keyboard3/**'
       - 'app/src/main/kotlin/dev/patrickgold/florisboard/ime/translation/TranslationRange.kt'
       - 'app/src/androidTest/kotlin/dev/patrickgold/florisboard/ime/translation/TranslationRangeTest.kt'
 
@@ -29,10 +32,10 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Run translation tests against Android EditText
+      - name: Run typing and translation tests against Android EditText
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
           arch: x86_64
           target: default
-          script: ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.patrickgold.florisboard.ime.translation.TranslationRangeTest
+          script: ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.patrickgold.florisboard.ime.translation.TranslationRangeTest,dev.patrickgold.florisboard.ime.keyboard3.DocumentTypingTest

@@ -2,4 +2,6 @@
     <string name="yijian_key_enable_pinyin">Turn on Pinyin input</string>
     <string name="yijian_key_disable_pinyin">Turn off Pinyin input</string>
     <string name="yijian_key_translate">Translate this text</string>
+    <string name="yijian_shift_single_letter">Uppercase the next letter only</string>
+    <string name="yijian_key_newline">New line</string>
 </resources>

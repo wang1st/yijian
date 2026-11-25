@@ -59,14 +59,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import dev.patrickgold.florisboard.R
-import dev.patrickgold.florisboard.app.FlorisPreferenceStore
 import dev.patrickgold.florisboard.ime.editor.ImeOptions
 import dev.patrickgold.florisboard.ime.keyboard3.ImeIcons
 import dev.patrickgold.florisboard.ime.keyboard3.LocalImeController
 import dev.patrickgold.florisboard.ime.keyboard3.touch.InputShiftState
 import dev.patrickgold.florisboard.ime.window.ImeWindowMode
 import dev.patrickgold.florisboard.ime.window.LocalWindowController
-import dev.patrickgold.jetpref.datastore.model.collectAsState
 import org.florisboard.lib.compose.icons.ForwardDelete
 import org.florisboard.lib.snygg.SnyggQueryAttributes
 import org.florisboard.lib.snygg.ui.SnyggIcon
@@ -94,21 +92,13 @@ fun Icon3(
     val windowConfig by windowController.activeWindowConfig.collectAsState()
     val windowMode by remember { derivedStateOf { windowConfig.mode } }
 
-    val displayIcon = if (value == ImeIcons.Enter && inputShiftState != InputShiftState.SHIFTED_MANUAL) {
-        val prefs by FlorisPreferenceStore
-        val translationEnabled by prefs.translation.enabled.collectAsState()
-        if (translationEnabled) ImeIcons.Translate else ImeIcons.Enter
-    } else {
-        value
-    }
-
-    val imageVector = remember(displayIcon, imeOptions, inputAttributes, inputShiftState, windowMode) {
-        when (displayIcon) {
+    val imageVector = remember(value, imeOptions, inputAttributes, inputShiftState, windowMode) {
+        when (value) {
             ImeIcons.DragMarker -> {
                 if (debugShowDragAndDropHelpers) Icons.Default.Close else null
             }
             ImeIcons.Enter -> {
-                if (inputShiftState == InputShiftState.SHIFTED_MANUAL || imeOptions.flagNoEnterAction || inputAttributes.flagTextMultiLine) {
+                if (imeOptions.flagNoEnterAction || inputAttributes.flagTextMultiLine) {
                     Icons.AutoMirrored.Filled.KeyboardReturn
                 } else {
                     when (imeOptions.action) {
@@ -136,17 +126,22 @@ fun Icon3(
             }
             // TODO incognito mode???
             // TODO char width/kata/hira icons???
-            else -> staticIcon3(displayIcon, context)
+            else -> staticIcon3(value, context)
         }
     }
 
     if (imageVector != null) {
         SnyggIcon(
             imageVector = imageVector,
-            contentDescription = when (displayIcon) {
+            contentDescription = when (value) {
                 ImeIcons.Pinyin -> {
                     val active by imeController.pinyinActive.collectAsState()
                     stringResource(if (active) R.string.yijian_key_disable_pinyin else R.string.yijian_key_enable_pinyin)
+                }
+                ImeIcons.Enter -> if (imageVector == Icons.AutoMirrored.Filled.KeyboardReturn) {
+                    stringResource(R.string.yijian_key_newline)
+                } else {
+                    imeState.editor.info.base.actionLabel?.toString() ?: imeOptions.action.name.lowercase()
                 }
                 ImeIcons.Translate -> stringResource(R.string.yijian_key_translate)
                 else -> null
