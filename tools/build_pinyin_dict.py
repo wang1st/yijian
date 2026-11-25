@@ -57,21 +57,22 @@ print(f'characters with pinyin: {len(char_pinyin)}', file=sys.stderr)
 
 
 def word_pinyin(word):
-    """Returns (full 'ni'hao' style, initials 'nh') or None if any char lacks pinyin."""
-    full = []
-    initials = []
+    """Returns a list of (full, initials) pairs - one per pronunciation combo."""
+    combos = [[]]  # each element: list of (full_part, initial_part)
     for ch in word:
         if ch.isascii() and ch.isalnum():
-            full.append(ch.lower())
-            initials.append(ch.lower())
+            for combo in combos:
+                combo.append((ch.lower(), ch.lower()))
             continue
         rs = char_pinyin.get(ch)
         if not rs:
-            return None
-        r = rs[0]
-        full.append(r)
-        initials.append(r[0])
-    return "'".join(full), ''.join(initials)
+            return []
+        new_combos = []
+        for combo in combos:
+            for r in rs:
+                new_combos.append(combo + [(r, r[0])])
+        combos = new_combos
+    return [("'".join(f for f, _ in combo), ''.join(i for _, i in combo)) for combo in combos]
 
 
 # ---- build dictionary -----------------------------------------------------
@@ -94,13 +95,21 @@ with open(DICT_FILE, encoding='utf-8') as f:
             continue
         if fq < MIN_FREQ:
             continue
-        py = word_pinyin(word)
-        if not py:
+        pys = word_pinyin(word)
+        if not pys:
             continue
         if word in seen:
             continue
         seen.add(word)
-        entries.append((word, py[0], py[1], fq))
+        # Primary reading keeps full frequency; other readings (polyphones /
+        # tone variants) are demoted so they rank after common candidates but
+        # stay reachable (e.g. typing "hang" must still offer 行).
+        primary = pys[0]
+        entries.append((word, primary[0], primary[1], fq))
+        for py in pys[1:]:
+            if py == primary:
+                continue
+            entries.append((word, py[0], py[1], max(1, fq // 10)))
 
 # ---- merge the phrase corpus (modern words like 益生菌 that jieba lacks) ---------
 phrase_re = re.compile(r'^([^:#\s]+):\s*([^#]+)')
@@ -149,7 +158,16 @@ for ch, rs in char_pinyin.items():
     seen.add(ch)
 
 entries.sort(key=lambda e: -e[3])
-entries = entries[:MAX_WORDS]
+# Drop exact (pinyin, word) duplicates produced by polyphone tone variants.
+deduped = []
+seen_pairs = set()
+for e in entries:
+    key = (e[0], e[2])
+    if key in seen_pairs:
+        continue
+    seen_pairs.add(key)
+    deduped.append(e)
+entries = deduped[:MAX_WORDS]
 
 # Emit both the separated form (ni'hao) and the compact form (nihao) so the runtime
 # index can match whatever the user types without pre-processing.
