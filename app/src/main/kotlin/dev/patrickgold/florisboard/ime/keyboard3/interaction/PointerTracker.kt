@@ -213,7 +213,9 @@ class PointerTracker(
                         extendedBounds = Rect.Zero,
                         extendedKeys = downKey.extendedPopupKeys,
                         extendedFocusedIndex = 0,
-                        extendedJob = if (downKey.isSuitableForExtendedPopup || downKey.attrs.id.value == "comma") {
+                        extendedJob = if (downKey.isSuitableForExtendedPopup ||
+                            downKey.attrs.id.value == "comma" ||
+                            downKey.attrs.id.value == "period") {
                             launchExtendedLongPressJob(longPressTimeout)
                         } else null,
                     )
@@ -436,6 +438,14 @@ class PointerTracker(
                 if (spaceKey.attrs.id.value == "comma") {
                     imeController.updateState {
                         emit("'".asK3String())
+                    }
+                    trackedOutputPointer.value = null
+                    return@mutateLocked
+                }
+                // yijian: long-pressing the period types a question mark immediately.
+                if (spaceKey.attrs.id.value == "period") {
+                    imeController.updateState {
+                        emit("?".asK3String())
                     }
                     trackedOutputPointer.value = null
                     return@mutateLocked
