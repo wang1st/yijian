@@ -666,7 +666,7 @@ class ImeController(
             }
         }
 
-        private fun emitTranslationCandidate(candidate: TranslationSuggestionCandidate) {
+        internal fun emitTranslationCandidate(candidate: TranslationSuggestionCandidate) {
             if (!translationManager.isCurrent(candidate)) return
             val range = candidate.range
             val translation = candidate.text.toString()
