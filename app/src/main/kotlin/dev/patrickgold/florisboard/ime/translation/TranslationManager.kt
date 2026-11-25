@@ -118,11 +118,15 @@ class TranslationManager(
     }
 
     fun isCurrent(candidate: TranslationSuggestionCandidate) =
-        candidate.requestId == requestId && candidate in candidates.value
+        // requestId alone identifies the live request: it increments on every dismiss, so
+        // any stale candidate carries a dead id. Comparing the full object would reject
+        // legitimately modified copies (e.g. committing correctedEnglish instead of text).
+        candidate.requestId == requestId
 
     /** The first live candidate of the current request, if any. */
     fun currentCandidate(): TranslationSuggestionCandidate? =
         candidates.value.firstOrNull { it.requestId == requestId }
+            ?: lastLesson.value?.takeIf { it.requestId == requestId }
 
     fun rememberTranslation(range: TranslationRange) {
         accepted.removeAll { it.end > range.start }
