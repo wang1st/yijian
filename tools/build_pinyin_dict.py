@@ -19,9 +19,11 @@ from collections import defaultdict
 
 PINYIN_FILE = '/tmp/pinyin.txt'
 DICT_FILE = '/tmp/dict.txt'
+PHRASE_FILE = '/tmp/ppd.txt'          # mozillazg/phrase-pinyin-data large: 413k modern words
 OUT = '/var/minis/workspace/yijian/app/src/main/assets/pinyin_dict.txt'
-MAX_WORDS = 120_000          # ~3-4 MB raw, trimmed below if needed
+MAX_WORDS = 250_000          # jieba + phrase corpus, trimmed to keep the APK reasonable
 MIN_FREQ = 2
+NEW_WORD_FREQ = 1            # phrase corpus has no frequencies; keep them below jieba words
 
 # ---- per-character pinyin -------------------------------------------------
 char_pinyin = {}
@@ -99,6 +101,41 @@ with open(DICT_FILE, encoding='utf-8') as f:
             continue
         seen.add(word)
         entries.append((word, py[0], py[1], fq))
+
+# ---- merge the phrase corpus (modern words like 益生菌 that jieba lacks) ---------
+phrase_re = re.compile(r'^([^:#\s]+):\s*([^#]+)')
+with open(PHRASE_FILE, encoding='utf-8') as f:
+    for line in f:
+        if line.startswith('#') or not line.strip():
+            continue
+        m = phrase_re.match(line)
+        if not m:
+            continue
+        word, reading = m.group(1), m.group(2).strip()
+        if not (1 <= len(word) <= 6):
+            continue
+        if not all('\u4e00' <= c <= '\u9fff' for c in word):
+            continue
+        if word in seen:
+            continue
+        # reading is tone-marked and space separated: yì shēng jūn
+        syls = []
+        for syl in reading.split():
+            syl = syl.translate(str.maketrans(
+                'āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜüńňǹḿ',
+                'aaaaeeeeiiiioooouuuuvvvvvnnnm'))
+            syl = re.sub(r'\d$', '', syl).replace('u:', 'v').lower()
+            if not re.fullmatch(r'[a-z]+', syl):
+                syls = None
+                break
+            syls.append(syl)
+        if not syls:
+            continue
+        # the word's own pinyin overrides per-character guessing (handles polyphones)
+        full = "'".join(syls)
+        ini = ''.join(s[0] for s in syls)
+        seen.add(word)
+        entries.append((word, full, ini, NEW_WORD_FREQ))
 
 # Also make sure every single character with pinyin is available, so the user can
 # always type something even if the word list lacks it.
