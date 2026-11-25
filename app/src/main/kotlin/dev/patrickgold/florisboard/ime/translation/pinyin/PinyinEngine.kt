@@ -127,52 +127,56 @@ class PinyinEngine(private val context: Context) {
         }
         val typed = input.lowercase().trim()
 
-        // Multi-character words and single characters are collected separately; a fixed number of
-        // tail slots is reserved for single characters so they never get squeezed out by longer
-        // (and usually higher-frequency) words. Typing "yi" must still surface 益/易/义.
+        // Three buckets, ranked the way mainstream pinyin IMEs do it:
+        //   1. single characters whose full reading equals the typed pinyin (frequency order)
+        //   2. multi-character words (frequency order)
+        //   3. remaining single characters from prefix matches (frequency order)
+        val exactSingle = LinkedHashMap<String, Int>(32)
         val multi = LinkedHashMap<String, Int>(64)
-        val single = LinkedHashMap<String, Int>(16)
+        val prefixSingle = LinkedHashMap<String, Int>(32)
 
-        fun add(e: Entry) {
-            val map = if (e.word.length == 1) single else multi
+        fun add(e: Entry, pinyin: String) {
+            val map = when {
+                e.word.length == 1 && pinyin == typed -> exactSingle
+                e.word.length == 1 -> prefixSingle
+                else -> multi
+            }
             map[e.word] = maxOf(map[e.word] ?: 0, e.freq)
         }
 
-        fun addAll(entries: List<Entry>?) {
+        fun addAll(entries: List<Entry>?, pinyin: String) {
             entries ?: return
             for (e in entries) {
-                if (multi.size + single.size >= limit * 4) return
-                add(e)
+                if (exactSingle.size + multi.size + prefixSingle.size >= limit * 4) return
+                add(e, pinyin)
             }
         }
 
         // 1. exact match on full pinyin
-        addAll(index.byFullPinyin[typed])
+        addAll(index.byFullPinyin[typed], typed)
         // 2. exact match on initials
-        addAll(index.byInitials[typed])
+        addAll(index.byInitials[typed], typed)
         // 3. prefix match via binary search on full pinyin
         var i = lowerBound(index.sortedKeys, typed)
         while (i < index.sortedKeys.size && index.sortedKeys[i].startsWith(typed)) {
-            addAll(index.byFullPinyin[index.sortedKeys[i]])
-            if (multi.size + single.size >= limit * 4) break
+            val key = index.sortedKeys[i]
+            addAll(index.byFullPinyin[key], key)
+            if (exactSingle.size + multi.size + prefixSingle.size >= limit * 4) break
             i++
         }
         // 4. single characters whose reading starts with the typed prefix
         var j = lowerBound(index.sortedSingleKeys, typed)
         while (j < index.sortedSingleKeys.size && index.sortedSingleKeys[j].startsWith(typed)) {
-            addAll(index.singleByPinyin[index.sortedSingleKeys[j]])
-            if (single.size >= 12) break
+            val key = index.sortedSingleKeys[j]
+            addAll(index.singleByPinyin[key], key)
             j++
         }
 
-        // Merge: most frequent words first, then EVERY single character matching the prefix.
-        // The candidate strip scrolls horizontally, so the user wants the full list, not a
-        // truncated one - typing "yi" must let them scroll to 益 however far down it ranks.
+        val exactSorted = exactSingle.entries.sortedByDescending { it.value }.map { it.key }
         val multiSorted = multi.entries.sortedByDescending { it.value }.map { it.key }
-        val singleSorted = single.entries.sortedByDescending { it.value }.map { it.key }
-        val merged = multiSorted + singleSorted
+        val prefixSorted = prefixSingle.entries.sortedByDescending { it.value }.map { it.key }
         // Safety cap against absurdly long matches (e.g. "y" prefix); well above real use.
-        return merged.take(300)
+        return (exactSorted + multiSorted + prefixSorted).take(300)
     }
 
     /** First index whose value is >= [key]. */
