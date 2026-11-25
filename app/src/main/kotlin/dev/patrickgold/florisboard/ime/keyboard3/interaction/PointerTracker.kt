@@ -58,6 +58,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import org.k3lp.lib.text.asK3String
 import org.k3lp.model.K3Model
 import org.k3lp.model.layer.K3LayerId
 import kotlin.math.pow
@@ -427,6 +428,14 @@ class PointerTracker(
                 if (isVoiceSpace) {
                     imeController.updateState {
                         emit(org.k3lp.lib.text.K3Descriptor("fl", "action", "voice_input"))
+                    }
+                    return@mutateLocked
+                }
+                // yijian: long-pressing the comma types an apostrophe immediately.
+                val isApostrophe = longPressIds?.any { id -> id.value == "apostrophe" } == true
+                if (isApostrophe) {
+                    imeController.updateState {
+                        emit("'".asK3String())
                     }
                     return@mutateLocked
                 }
