@@ -41,10 +41,16 @@ class PinyinEngine(private val context: Context) {
         val byFullPinyin: Map<String, List<Entry>>,
         val byInitials: Map<String, List<Entry>>,
         val singleChars: List<Entry>,
+        val singleByPinyin: Map<String, List<Entry>>,
     ) {
         /** Sorted pinyin keys, enabling binary-search prefix lookup instead of a full scan. */
         val sortedKeys: Array<String> by lazy {
             byFullPinyin.keys.sorted().toTypedArray()
+        }
+
+        /** Sorted single-character pinyin keys for the tail slots of the candidate row. */
+        val sortedSingleKeys: Array<String> by lazy {
+            singleByPinyin.keys.sorted().toTypedArray()
         }
     }
 
@@ -75,6 +81,7 @@ class PinyinEngine(private val context: Context) {
         val byFull = HashMap<String, MutableList<Entry>>(200_000)
         val byInitials = HashMap<String, MutableList<Entry>>(50_000)
         val singles = ArrayList<Entry>(20_000)
+        val singleByPinyin = HashMap<String, MutableList<Entry>>(20_000)
         context.assets.open(ASSET_NAME).bufferedReader().useLines { lines ->
             for (line in lines) {
                 if (line.isEmpty()) continue
@@ -91,15 +98,19 @@ class PinyinEngine(private val context: Context) {
                 val entry = Entry(word, freq)
                 byFull.getOrPut(full) { ArrayList(4) }.add(entry)
                 byInitials.getOrPut(initials) { ArrayList(4) }.add(entry)
-                if (word.length == 1) singles.add(entry)
+                if (word.length == 1) {
+                    singles.add(entry)
+                    singleByPinyin.getOrPut(full) { ArrayList(2) }.add(entry)
+                }
             }
         }
         // Highest frequency first; callers take a prefix.
         byFull.values.forEach { it.sortByDescending { e -> e.freq } }
         byInitials.values.forEach { it.sortByDescending { e -> e.freq } }
         singles.sortByDescending { it.freq }
+        singleByPinyin.values.forEach { it.sortByDescending { e -> e.freq } }
         flogError { "yijian pinyin: loaded ${byFull.size} pinyin keys" }
-        return Index(byFull, byInitials, singles)
+        return Index(byFull, byInitials, singles, singleByPinyin)
     }
 
     /**
@@ -116,13 +127,22 @@ class PinyinEngine(private val context: Context) {
         }
         val typed = input.lowercase().trim()
 
-        val result = LinkedHashMap<String, Int>(64)
+        // Multi-character words and single characters are collected separately; a fixed number of
+        // tail slots is reserved for single characters so they never get squeezed out by longer
+        // (and usually higher-frequency) words. Typing "yi" must still surface 益/易/义.
+        val multi = LinkedHashMap<String, Int>(64)
+        val single = LinkedHashMap<String, Int>(16)
+
+        fun add(e: Entry) {
+            val map = if (e.word.length == 1) single else multi
+            map[e.word] = maxOf(map[e.word] ?: 0, e.freq)
+        }
 
         fun addAll(entries: List<Entry>?) {
             entries ?: return
             for (e in entries) {
-                if (result.size >= limit * 3) return
-                result[e.word] = maxOf(result[e.word] ?: 0, e.freq)
+                if (multi.size + single.size >= limit * 4) return
+                add(e)
             }
         }
 
@@ -130,28 +150,27 @@ class PinyinEngine(private val context: Context) {
         addAll(index.byFullPinyin[typed])
         // 2. exact match on initials
         addAll(index.byInitials[typed])
-        // 3. prefix match via binary search: "nih" should surface 你好 without scanning 120k keys
-        if (result.size < limit) {
-            var i = lowerBound(index.sortedKeys, typed)
-            while (i < index.sortedKeys.size && index.sortedKeys[i].startsWith(typed)) {
-                addAll(index.byFullPinyin[index.sortedKeys[i]])
-                if (result.size >= limit * 3) break
-                i++
-            }
+        // 3. prefix match via binary search on full pinyin
+        var i = lowerBound(index.sortedKeys, typed)
+        while (i < index.sortedKeys.size && index.sortedKeys[i].startsWith(typed)) {
+            addAll(index.byFullPinyin[index.sortedKeys[i]])
+            if (multi.size + single.size >= limit * 4) break
+            i++
         }
-        // 4. single characters whose reading starts with what was typed
-        if (result.size < limit) {
-            for (e in index.singleChars) {
-                if (result.size >= limit * 3) break
-                // cheap check: skip if the word already came from a longer match
-                if (result.containsKey(e.word)) continue
-            }
+        // 4. single characters whose reading starts with the typed prefix
+        var j = lowerBound(index.sortedSingleKeys, typed)
+        while (j < index.sortedSingleKeys.size && index.sortedSingleKeys[j].startsWith(typed)) {
+            addAll(index.singleByPinyin[index.sortedSingleKeys[j]])
+            if (single.size >= 12) break
+            j++
         }
 
-        return result.entries
-            .sortedByDescending { it.value }
-            .take(limit)
-            .map { it.key }
+        // Merge: most frequent words first, then reserve the tail for single characters.
+        val multiSorted = multi.entries.sortedByDescending { it.value }.map { it.key }
+        val singleSorted = single.entries.sortedByDescending { it.value }.map { it.key }
+        val tailSlots = minOf(6, singleSorted.size)
+        val headSlots = (limit - tailSlots).coerceAtLeast(0)
+        return multiSorted.take(headSlots) + singleSorted.take(tailSlots)
     }
 
     /** First index whose value is >= [key]. */
