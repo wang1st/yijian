@@ -378,6 +378,16 @@ class FlorisImeService : LifecycleInputMethodService() {
             || prefs.physicalKeyboard.showOnScreenKeyboard.get()
     }
 
+    override fun onUpdateSelection(
+        oldSelStart: Int, oldSelEnd: Int, newSelStart: Int, newSelEnd: Int,
+        candidatesStart: Int, candidatesEnd: Int,
+    ) {
+        super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd)
+        if (newSelStart >= 0 && newSelEnd >= 0 && isInputViewShown) {
+            imeController.updateStateBlocking { handleUpdateSelection(K3TextRange(newSelStart, newSelEnd)) }
+        }
+    }
+
     override fun onUpdateCursorAnchorInfo(cursorAnchorInfo: CursorAnchorInfo?) {
         if (cursorAnchorInfo == null) {
             return

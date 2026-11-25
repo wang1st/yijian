@@ -113,19 +113,16 @@ class TranslationManager(
     /** Pasted text and other external edits shift the editor; drop candidates that no longer match. */
     fun invalidateStaleRequest(editor: ImeEditor) {
         val range = pendingRange ?: return
-        val window = editor.ic.get()?.translationWindow(range.text.length + 40) ?: return
-        val stale = window.selected.isNotEmpty() ||
-            !window.before.endsWith(range.text) ||
-            window.start != range.end
-        if (stale) dismissRequest()
+        val window = editor.ic.get()?.translationWindow(editor.reportedCaret) ?: return
+        if (!window.matchesSource(range)) dismissRequest()
     }
 
     fun isCurrent(candidate: TranslationSuggestionCandidate) =
         candidate.requestId == requestId && candidate in candidates.value
 
-    fun rememberTranslation(range: TranslationRange, translation: String) {
+    fun rememberTranslation(range: TranslationRange) {
         accepted.removeAll { it.end > range.start }
-        accepted.add(range.copy(text = translation))
+        accepted.add(range)
     }
 
     private val readTimeoutSeconds = 60
@@ -367,23 +364,26 @@ class TranslationManager(
             setError("当前输入框未开启翻译")
             return
         }
-        val window = state.editor.ic.get()?.translationWindow(MAX_TRANSLATE_CHARS + 40)
-        if (window == null || window.selected.isNotEmpty()) {
+        val ic = state.editor.ic.get()
+        val window = ic?.translationWindow(state.editor.reportedCaret)
+        if (ic == null || window == null || window.selected.isNotEmpty()) {
             dismissRequest()
             setError(if (window == null) "读不到光标位置，请重新点一下输入框" else "请将光标放在要翻译的文字末尾")
             return
         }
-        val raw = textToTranslate(window.untranslatedSuffix(accepted))
+        val raw = textToTranslate(window.untranslatedSuffix(accepted).currentParagraph())
         if (!hasTranslatableContent(raw, requireTwoWords = false)) {
             dismissRequest()
             setError("光标前没有待翻译的文字")
             return
         }
-        val range = TranslationRange(window.start - raw.length, raw)
+        val prefix = window.before.dropLast(raw.length)
+        val range = TranslationRange(window.start - raw.length, raw, prefix.takeLast(CONTEXT_CHARS),
+            ic.getTextAfterCursor(CONTEXT_CHARS, 0)?.toString()?.take(CONTEXT_CHARS))
         if (pendingRange == range && (status.value == Status.TRANSLATING || candidates.value.isNotEmpty())) return
         dismissRequest()
         pendingRange = range
-        translateSentence(raw, window.before.dropLast(raw.length).takeLast(200), range)
+        translateSentence(raw, prefix.takeLast(200), range)
     }
 
     private var pendingRange: TranslationRange? = null
@@ -628,7 +628,7 @@ class TranslationManager(
         return if (firstBreak in 0 until (window.length * 2 / 3)) {
             window.substring(firstBreak + 1).trimStart(' ', '\t')
         } else {
-            window
+            if (window.first().isLowSurrogate()) window.drop(1) else window
         }
     }
 

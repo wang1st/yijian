@@ -48,8 +48,8 @@ import dev.patrickgold.florisboard.ime.smartbar.quickaction.QuickAction
 import dev.patrickgold.florisboard.ime.nlp.ClipboardSuggestionCandidate
 import dev.patrickgold.florisboard.ime.nlp.SuggestionCandidate
 import dev.patrickgold.florisboard.ime.text.key.KeyVariation
-import dev.patrickgold.florisboard.ime.translation.replaceTranslation
 import dev.patrickgold.florisboard.ime.translation.translationWindow
+import dev.patrickgold.florisboard.ime.translation.replaceTranslation
 import dev.patrickgold.florisboard.ime.translation.TranslationRange
 import dev.patrickgold.florisboard.ime.translation.TranslationManager
 import dev.patrickgold.florisboard.ime.translation.TranslationSuggestionCandidate
@@ -371,6 +371,8 @@ class ImeController(
         }
 
         fun handleUpdateSelection(newSelection: K3TextRange) {
+            if (newSelection.min < 0 || state.editor.ic.get() == null) return
+            state.editor.reportedCaret = newSelection.start.takeIf { newSelection.isCollapsed() }
             val content = expectedContentQueue.popUntilOrNull { it.selection == newSelection }
             if (content != null) {
                 flogDebug { "DEDUPLICATED!!1" }
@@ -658,8 +660,18 @@ class ImeController(
                     translationManager.setError("未能确认替换结果，请检查输入框。也可以复制译文。")
                     return
                 }
-                val inserted = range.copy(text = translation)
-                translationManager.rememberTranslation(range, translation)
+                // A window-local offset can change after replacement in a long document.
+                // Record the observed translation location for undo and subsequent sentences.
+                val expectedEnd = state.editor.reportedCaret?.takeIf { it == range.end }?.let {
+                    it - range.text.length + translation.length
+                }
+                val after = state.editor.ic.get()?.translationWindow(expectedEnd)
+                val inserted = if (after != null && after.before.endsWith(translation) && after.selected.isEmpty()) {
+                    range.copy(start = after.start - translation.length, text = translation)
+                } else {
+                    range.copy(text = translation)
+                }
+                translationManager.rememberTranslation(inserted)
                 translationManager.offerUndo(inserted, range.text)
             }
             translationManager.dismissRequest()
@@ -668,16 +680,11 @@ class ImeController(
 
         private fun replaceAndRefresh(range: TranslationRange, replacement: String): Boolean {
             val ic = state.editor.ic.get() ?: return false
-            val replaced = ic.replaceTranslation(range, replacement)
-            // Refresh even on failure: some editors accept a selection but refuse the commit.
+            // Do not feed a surrounding-text offset back into k3 as an absolute selection.
+            // The host's next selection update supplies the new position.
             expectedContentQueue.clear()
-            ic.translationWindow(50)?.let { window ->
-                resetContent(
-                    K3TextRange(window.start, window.start + window.selected.length),
-                    state.editor.getSurroundingText(50, 10),
-                )
-            }
-            return replaced
+            return ic.replaceTranslation(range, replacement, state.editor.reportedCaret,
+                singleLine = !state.editor.info.inputAttributes.flagTextMultiLine)
         }
 
         fun undoLastReplacement() {

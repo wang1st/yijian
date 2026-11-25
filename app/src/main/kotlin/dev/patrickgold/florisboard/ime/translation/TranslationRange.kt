@@ -22,7 +22,12 @@ import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputConnection
 
 /** UTF-16 positions in the editor, including the offset of a truncated text window. */
-data class TranslationRange(val start: Int, val text: String) {
+data class TranslationRange(
+    val start: Int,
+    val text: String,
+    val left: String = "",
+    val right: String? = null,
+) {
     val end: Int get() = start + text.length
 }
 
@@ -50,7 +55,14 @@ internal data class EditorWindow(
     }
 }
 
-internal fun InputConnection.translationWindow(limit: Int): EditorWindow? {
+internal const val TRANSLATION_WINDOW = 440
+internal const val CONTEXT_CHARS = 32
+
+/** Paragraph boundaries are explicit editor characters; soft wrapping does not split a sentence. */
+internal fun String.currentParagraph(): String = substring(lastIndexOfAny(charArrayOf('\n', '\r', '\u2028', '\u2029')) + 1)
+
+internal fun InputConnection.translationWindow(reportedCaret: Int? = null): EditorWindow? {
+    val limit = TRANSLATION_WINDOW
     fun window(text: CharSequence?, offset: Int, start: Int, end: Int): EditorWindow? {
         if (text == null || offset < 0 || start !in 0..text.length || end !in 0..text.length) return null
         val left = minOf(start, end)
@@ -60,91 +72,105 @@ internal fun InputConnection.translationWindow(limit: Int): EditorWindow? {
             offset + left,
         )
     }
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        getSurroundingText(limit, 0, 0)?.let {
-            window(it.text, it.offset, it.selectionStart, it.selectionEnd)?.let { result -> return result }
-        }
+    val surrounding = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        getSurroundingText(limit, 0, 0)?.let { window(it.text, it.offset, it.selectionStart, it.selectionEnd) }
+    } else null
+    if (surrounding != null && (reportedCaret == null || surrounding.start == reportedCaret)) return surrounding
+    val e = getExtractedText(ExtractedTextRequest().apply { hintMaxChars = limit + 1 }, 0)
+    val extracted = e?.takeIf { it.partialStartOffset < 0 }?.let {
+        window(it.text, it.startOffset, it.selectionStart, it.selectionEnd)
     }
-    val request = ExtractedTextRequest().apply { hintMaxChars = limit + 1 }
-    val extracted = getExtractedText(request, 0) ?: return null
-    if (extracted.partialStartOffset >= 0) return null
-    return window(extracted.text, extracted.startOffset, extracted.selectionStart, extracted.selectionEnd)
+    return if (extracted != null && (surrounding == null || extracted.start == reportedCaret)) extracted else surrounding
 }
 
-/** Commit once, only after the editor confirms that the exact original range is selected. */
-internal fun InputConnection.replaceTranslation(range: TranslationRange, replacement: String): Boolean {
-    val tag = "YIJIAN-REPLACE"
+internal fun EditorWindow.matchesSource(range: TranslationRange): Boolean =
+    (atEndOf(range) && before.endsWith(range.left + range.text)) ||
+        (start == range.start && selected == range.text && before.endsWith(range.left))
 
-    // Primary strategy: count the delete length from the LIVE text before the cursor and use
-    // deleteSurroundingText. Absolute positions (setSelection) drift in multi-line editors such
-    // as WPS: their internal offsets count newlines differently from what getSurroundingText
-    // reports, so selection landed on the wrong span and the cursor jumped around.
-    val liveBefore = getTextBeforeCursor(range.text.length + 80, 0)?.toString()
-    if (liveBefore == null) {
-        Log.e(tag, "cannot read text before cursor")
-        return false
-    }
-    var matchLen = commonSuffixLength(liveBefore, range.text)
-    // Trailing punctuation/spacing can differ (typed punctuation, editor normalisation); allow
-    // a small tail trim so the core sentence still matches.
-    if (matchLen < range.text.length / 2) {
-        val trimmedText = range.text.trimEnd(' ', '\t', '\n', '\r', '.', '!', '?', '。', '！', '？')
-        val trimmedLen = commonSuffixLength(liveBefore, trimmedText)
-        if (trimmedLen >= trimmedText.length / 2 && trimmedLen >= range.text.length / 2) {
-            matchLen = trimmedLen
-        }
-    }
-    if (matchLen == 0 || matchLen < range.text.length / 2) {
-        Log.e(tag, "source no longer at cursor: matched $matchLen of ${range.text.length}")
-        return false
-    }
+private fun InputConnection.before(count: Int): String? =
+    getTextBeforeCursor(count, 0)?.toString()?.takeLast(count)
 
-    beginBatchEdit()
-    try {
-        finishComposingText()
-        if (!deleteSurroundingText(matchLen, 0)) {
-            // Some editors silently ignore deleteSurroundingText (WeChat). Fall back to the
-            // absolute-position selection path, which works in single-line editors.
-            endBatchEdit()
-            return replaceViaSelectionFallback(range, replacement)
-        }
-        if (!commitText(replacement, 1)) {
-            Log.e(tag, "commitText rejected after delete")
-            return false
-        }
-    } finally {
-        endBatchEdit()
-    }
+private fun InputConnection.after(): String? =
+    getTextAfterCursor(CONTEXT_CHARS, 0)?.toString()?.take(CONTEXT_CHARS)
 
-    val after = getTextBeforeCursor(replacement.length + 2, 0)?.toString().orEmpty()
-    if (after.endsWith(replacement)) return true
-    Log.e(tag, "post-commit verification failed")
+private fun rejected(stage: String): Boolean {
+    Log.w("YIJIAN-REPLACE", stage)
     return false
 }
 
-/** Absolute-position replacement for editors that ignore deleteSurroundingText. */
-private fun InputConnection.replaceViaSelectionFallback(range: TranslationRange, replacement: String): Boolean {
-    val tag = "YIJIAN-REPLACE"
-    if (!setSelection(range.start, range.end)) {
-        Log.e(tag, "fallback setSelection rejected")
-        return false
+/** Verify the two sides of the caret, even when the editor only reports paragraph-local offsets. */
+private fun InputConnection.hasEdges(left: String, right: String): Boolean =
+    getSelectedText(0).isNullOrEmpty() && before(left.length.coerceAtLeast(1)) == left && after() == right
+
+internal fun InputConnection.replaceTranslation(
+    range: TranslationRange,
+    replacement: String,
+    reportedCaret: Int? = null,
+    singleLine: Boolean = false,
+): Boolean {
+    val window = translationWindow(reportedCaret) ?: return rejected("source window unavailable")
+    if (!window.matchesSource(range) || range.text.isEmpty()) return rejected("source or caret changed")
+    val selected = window.selected.isNotEmpty()
+    val count = if (selected) 0 else range.text.length
+    val leftAndSource = before(count + CONTEXT_CHARS) ?: return rejected("left context unavailable")
+    val right = after() ?: return rejected("right context unavailable")
+    if ((!selected && !leftAndSource.endsWith(range.text)) || (range.right != null && right != range.right)) {
+        return rejected("live source or right context changed")
     }
-    if (!commitText(replacement, 1)) {
-        Log.e(tag, "fallback commitText rejected")
-        runCatching { setSelection(range.end, range.end) }
-        return false
+    val left = leftAndSource.dropLast(count)
+    if (!left.endsWith(range.left)) return rejected("left context changed")
+
+    // A selected source can be committed directly. Re-read after finalising composition:
+    // custom editors may move the caret when their final composing word is committed.
+    if (!finishComposingText()) return rejected("composition unavailable")
+    if (selected) {
+        if (getSelectedText(0)?.toString() != range.text || translationWindow(reportedCaret)?.matchesSource(range) != true ||
+            before(CONTEXT_CHARS) != left || after() != right) return rejected("selection changed")
+        commitText(replacement, 1)
+    } else {
+        if (!hasEdges(left + range.text, right) || translationWindow(reportedCaret)?.atEndOf(range) != true) {
+            return rejected("caret moved after composition")
+        }
+        // Only use absolute Android commands if an independent editor selection and an
+        // extracted text snapshot both confirm the same position and literal source.
+        val absolute = reportedCaret == range.end && confirmedExtractedRange(range)
+        if (absolute && Build.VERSION.SDK_INT >= 34) {
+            replaceText(range.start, range.end, replacement, 1, null)
+        } else {
+            if (range.text.currentParagraph() != range.text) return rejected("relative edit crosses paragraphs")
+            val indistinguishableTail = left.isNotEmpty() && (left + range.text).endsWith(left)
+            if (indistinguishableTail && !absolute) return rejected("ambiguous relative deletion")
+            deleteSurroundingText(range.text.length, 0)
+            if (hasEdges(left, right) && (!indistinguishableTail || translationWindow()?.start == range.start)) {
+                // Do not batch the read with the delete: some editors publish changes only
+                // at endBatchEdit. Never insert until removal at this caret is observable.
+                val submitted = commitText(replacement, 1)
+                if (!submitted && hasEdges(left, right)) {
+                    commitText(range.text, 1)
+                    return rejected("translation rejected; attempted to restore original")
+                }
+            } else if (singleLine && absolute && hasEdges(left + range.text, right)) {
+                if (!setSelection(range.start, range.end) ||
+                    getSelectedText(0)?.toString() != range.text ||
+                    before(CONTEXT_CHARS) != left || after() != right) {
+                    return rejected("single-line selection not confirmed")
+                }
+                commitText(replacement, 1)
+            } else {
+                return rejected("relative deletion not confirmed")
+            }
+        }
     }
-    val after = getTextBeforeCursor(replacement.length + 2, 0)?.toString().orEmpty()
-    return after.endsWith(replacement)
+    if (hasEdges(left + replacement, right)) return true
+    return rejected("replacement not confirmed; no second write")
 }
 
-/** Length of the suffix shared by [a] and [b], walking backwards from both tails. */
-private fun commonSuffixLength(a: String, b: String): Int {
-    var i = a.length
-    var j = b.length
-    while (i > 0 && j > 0 && a[i - 1] == b[j - 1]) {
-        i--
-        j--
-    }
-    return a.length - i
+private fun InputConnection.confirmedExtractedRange(range: TranslationRange): Boolean {
+    val e = getExtractedText(ExtractedTextRequest().apply { hintMaxChars = TRANSLATION_WINDOW }, 0) ?: return false
+    val text = e.text ?: return false
+    val end = e.selectionEnd
+    val start = end - range.text.length
+    return e.partialStartOffset < 0 && e.startOffset >= 0 && e.selectionStart == end &&
+        start >= 0 && end <= text.length && e.startOffset + end == range.end &&
+        text.subSequence(start, end).toString() == range.text
 }

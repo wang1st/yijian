@@ -41,6 +41,11 @@ open class ImeEditor(
     val ic: WeakReference<InputConnection>,
     val info: FlorisEditorInfo,
 ) : K3Editor {
+    // Only the host's selection reports can corroborate absolute offsets for translation.
+    internal var reportedCaret: Int? = info.base.initialSelStart.takeIf {
+        it >= 0 && it == info.base.initialSelEnd
+    }
+
     fun getSurroundingText(charsBefore: Int, charsAfter: Int): K3SurroundingText {
         val ic = ic.get() ?: return K3SurroundingText.Empty
         // TODO maybe use eet for getSurroundingText??
