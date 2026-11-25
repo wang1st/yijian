@@ -607,7 +607,7 @@ private fun PinyinPanel(
                 .padding(horizontal = 8.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            candidates.take(40).forEach { word ->
+            candidates.forEach { word ->
                 Box(
                     modifier = Modifier
                         .heightIn(min = 44.dp)

@@ -165,12 +165,14 @@ class PinyinEngine(private val context: Context) {
             j++
         }
 
-        // Merge: most frequent words first, then reserve the tail for single characters.
+        // Merge: most frequent words first, then EVERY single character matching the prefix.
+        // The candidate strip scrolls horizontally, so the user wants the full list, not a
+        // truncated one - typing "yi" must let them scroll to 益 however far down it ranks.
         val multiSorted = multi.entries.sortedByDescending { it.value }.map { it.key }
         val singleSorted = single.entries.sortedByDescending { it.value }.map { it.key }
-        val tailSlots = minOf(6, singleSorted.size)
-        val headSlots = (limit - tailSlots).coerceAtLeast(0)
-        return multiSorted.take(headSlots) + singleSorted.take(tailSlots)
+        val merged = multiSorted + singleSorted
+        // Safety cap against absurdly long matches (e.g. "y" prefix); well above real use.
+        return merged.take(300)
     }
 
     /** First index whose value is >= [key]. */
