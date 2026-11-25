@@ -120,6 +120,10 @@ class TranslationManager(
     fun isCurrent(candidate: TranslationSuggestionCandidate) =
         candidate.requestId == requestId && candidate in candidates.value
 
+    /** The first live candidate of the current request, if any. */
+    fun currentCandidate(): TranslationSuggestionCandidate? =
+        candidates.value.firstOrNull { it.requestId == requestId }
+
     fun rememberTranslation(range: TranslationRange) {
         accepted.removeAll { it.end > range.start }
         accepted.add(range)

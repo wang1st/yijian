@@ -116,6 +116,14 @@ class ImeController(
     /** Human readable reason for the last translation failure, null when there is none. */
     val translationError get() = translationManager.errorMessage
 
+    /** Commits the corrected English from the teacher line, replacing the source like a candidate. */
+    fun commitTeacherEnglish() {
+        val candidate = translationManager.currentCandidate() ?: return
+        val english = candidate.correctedEnglish
+        if (english.isBlank()) return
+        updateStateBlocking { emitTranslationCandidate(candidate.copy(text = english)) }
+    }
+
     /** Recorder shared with the translation panel so it can show recording state. */
     val recorder get() = translationManager.recorder
 

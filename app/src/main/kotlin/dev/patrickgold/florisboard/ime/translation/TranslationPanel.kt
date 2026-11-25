@@ -126,6 +126,9 @@ fun TranslationPanel() {
         teacherCard = teacherCard,
         voiceMessage = if (recording) "🎤 正在录音…（松开结束）" else voiceMsg,
         onSpeak = { text -> imeController.speak(text) },
+        onCommitEnglish = { english ->
+            imeController.commitTeacherEnglish()
+        },
         candidates = candidates,
         onClick = { candidate ->
             imeController.updateStateBlocking {
@@ -165,6 +168,7 @@ private fun TranslationPanelContent(
     teacherCard: TranslationSuggestionCandidate?,
     voiceMessage: String?,
     onSpeak: (String) -> Unit,
+    onCommitEnglish: (String) -> Unit,
     candidates: List<SuggestionCandidate>,
     onClick: (SuggestionCandidate) -> Unit,
     onDismiss: () -> Unit,
@@ -197,6 +201,7 @@ private fun TranslationPanelContent(
                     card = teacherCard,
                     onSurface = onSurface,
                     onSpeak = onSpeak,
+                    onCommitEnglish = onCommitEnglish,
                 )
                 Divider(onSurface)
             }
@@ -423,6 +428,7 @@ private fun TeacherCard(
     card: TranslationSuggestionCandidate,
     onSurface: androidx.compose.ui.graphics.Color,
     onSpeak: (String) -> Unit,
+    onCommitEnglish: (String) -> Unit,
 ) {
     var expanded by remember(card.requestId) { mutableStateOf(false) }
     val english = card.correctedEnglish
@@ -460,7 +466,8 @@ private fun TeacherCard(
             Text(
                 text = english,
                 color = onSurface,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().clickable { onCommitEnglish(english) }
+                    .semantics { contentDescription = "点击上屏地道英文" },
                 fontSize = 20.sp,
                 lineHeight = 27.sp,
                 fontWeight = FontWeight.Medium,
