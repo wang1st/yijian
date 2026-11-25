@@ -213,7 +213,7 @@ class PointerTracker(
                         extendedBounds = Rect.Zero,
                         extendedKeys = downKey.extendedPopupKeys,
                         extendedFocusedIndex = 0,
-                        extendedJob = if (downKey.isSuitableForExtendedPopup) {
+                        extendedJob = if (downKey.isSuitableForExtendedPopup || downKey.attrs.id.value == "comma") {
                             launchExtendedLongPressJob(longPressTimeout)
                         } else null,
                     )
@@ -432,11 +432,12 @@ class PointerTracker(
                     return@mutateLocked
                 }
                 // yijian: long-pressing the comma types an apostrophe immediately.
-                val isApostrophe = longPressIds?.any { id -> id.value == "apostrophe" } == true
-                if (isApostrophe) {
+                // Clear the tracked pointer so handleUp does not also type the comma itself.
+                if (spaceKey.attrs.id.value == "comma") {
                     imeController.updateState {
                         emit("'".asK3String())
                     }
+                    trackedOutputPointer.value = null
                     return@mutateLocked
                 }
             }

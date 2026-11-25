@@ -38,9 +38,7 @@
         <key id="space-no-stretch" output="\u{0020}" />
         <!-- Long-press the space bar to talk (push-to-talk voice input) -->
         <key id="voice-space" output=" " longPressKeyIds="voice" stretch="true" />
-        <!-- Long-press the comma to type an apostrophe -->
-        <key id="comma" output="," longPressKeyIds="apostrophe" />
-        <key id="apostrophe" output="&#39;" />
+        <key id="comma" output="," />
         <key id="bksp-no-stretch" output="@k3:action/backspace" />
 
         <!-- Numbers -->
