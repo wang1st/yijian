@@ -74,44 +74,77 @@ internal fun InputConnection.translationWindow(limit: Int): EditorWindow? {
 /** Commit once, only after the editor confirms that the exact original range is selected. */
 internal fun InputConnection.replaceTranslation(range: TranslationRange, replacement: String): Boolean {
     val tag = "YIJIAN-REPLACE"
-    if (translationWindow(range.text.length)?.atEndOf(range) != true) {
-        Log.e(tag, "pre-check failed: editor does not end with the source at ${range.start}")
+
+    // Primary strategy: count the delete length from the LIVE text before the cursor and use
+    // deleteSurroundingText. Absolute positions (setSelection) drift in multi-line editors such
+    // as WPS: their internal offsets count newlines differently from what getSurroundingText
+    // reports, so selection landed on the wrong span and the cursor jumped around.
+    val liveBefore = getTextBeforeCursor(range.text.length + 80, 0)?.toString()
+    if (liveBefore == null) {
+        Log.e(tag, "cannot read text before cursor")
         return false
     }
+    var matchLen = commonSuffixLength(liveBefore, range.text)
+    // Trailing punctuation/spacing can differ (typed punctuation, editor normalisation); allow
+    // a small tail trim so the core sentence still matches.
+    if (matchLen < range.text.length / 2) {
+        val trimmedText = range.text.trimEnd(' ', '\t', '\n', '\r', '.', '!', '?', '。', '！', '？')
+        val trimmedLen = commonSuffixLength(liveBefore, trimmedText)
+        if (trimmedLen >= trimmedText.length / 2 && trimmedLen >= range.text.length / 2) {
+            matchLen = trimmedLen
+        }
+    }
+    if (matchLen == 0 || matchLen < range.text.length / 2) {
+        Log.e(tag, "source no longer at cursor: matched $matchLen of ${range.text.length}")
+        return false
+    }
+
     beginBatchEdit()
     try {
-        if (!finishComposingText()) {
-            Log.e(tag, "finishComposingText rejected")
-            return false
+        finishComposingText()
+        if (!deleteSurroundingText(matchLen, 0)) {
+            // Some editors silently ignore deleteSurroundingText (WeChat). Fall back to the
+            // absolute-position selection path, which works in single-line editors.
+            endBatchEdit()
+            return replaceViaSelectionFallback(range, replacement)
         }
-        if (!setSelection(range.start, range.end)) {
-            Log.e(tag, "setSelection rejected")
-            return false
-        }
-        // Do not re-read the selection here: inside a batch edit some editors have not yet
-        // reflected setSelection into getSelectedText (returned null), which used to abort a
-        // perfectly good replace intermittently. commitText replaces the current selection,
-        // and a successful setSelection is sufficient; the post-commit verification below
-        // catches real failures.
         if (!commitText(replacement, 1)) {
-            // Some editors reject the commit while leaving the source highlighted; put the cursor
-            // back at the end of the source so the user is not left staring at a stray selection.
-            Log.e(tag, "commitText rejected")
-            runCatching { setSelection(range.end, range.end) }
+            Log.e(tag, "commitText rejected after delete")
             return false
         }
     } finally {
         endBatchEdit()
     }
 
-    // Verify with getTextBeforeCursor, which reads synchronously. The surrounding-text window can
-    // still describe the pre-commit state right after endBatchEdit on some editors, which made a
-    // successful replace look like a failure ("未能确认替换结果") and left the source selected.
-    val before = getTextBeforeCursor(replacement.length + 2, 0)?.toString().orEmpty()
-    if (before.endsWith(replacement)) return true
+    val after = getTextBeforeCursor(replacement.length + 2, 0)?.toString().orEmpty()
+    if (after.endsWith(replacement)) return true
+    Log.e(tag, "post-commit verification failed")
+    return false
+}
 
-    // Fall back to the window (covers editors that only report through surrounding text).
-    val confirmed = translationWindow(replacement.length)?.atEndOf(range.copy(text = replacement)) == true
-    if (!confirmed) Log.e(tag, "post-commit verification failed")
-    return confirmed
+/** Absolute-position replacement for editors that ignore deleteSurroundingText. */
+private fun InputConnection.replaceViaSelectionFallback(range: TranslationRange, replacement: String): Boolean {
+    val tag = "YIJIAN-REPLACE"
+    if (!setSelection(range.start, range.end)) {
+        Log.e(tag, "fallback setSelection rejected")
+        return false
+    }
+    if (!commitText(replacement, 1)) {
+        Log.e(tag, "fallback commitText rejected")
+        runCatching { setSelection(range.end, range.end) }
+        return false
+    }
+    val after = getTextBeforeCursor(replacement.length + 2, 0)?.toString().orEmpty()
+    return after.endsWith(replacement)
+}
+
+/** Length of the suffix shared by [a] and [b], walking backwards from both tails. */
+private fun commonSuffixLength(a: String, b: String): Int {
+    var i = a.length
+    var j = b.length
+    while (i > 0 && j > 0 && a[i - 1] == b[j - 1]) {
+        i--
+        j--
+    }
+    return a.length - i
 }
