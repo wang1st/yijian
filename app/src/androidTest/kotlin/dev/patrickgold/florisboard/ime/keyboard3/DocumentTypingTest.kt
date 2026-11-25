@@ -1,6 +1,7 @@
 package dev.patrickgold.florisboard.ime.keyboard3
 
 import android.text.InputType
+import android.view.KeyEvent
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputConnectionWrapper
@@ -46,6 +47,13 @@ class DocumentTypingTest {
                     writes.add(text.toString())
                     return super.commitText(text, newCursorPosition)
                 }
+                override fun sendKeyEvent(event: KeyEvent): Boolean {
+                    return when (event.action) {
+                        KeyEvent.ACTION_DOWN -> field.onKeyDown(event.keyCode, event)
+                        KeyEvent.ACTION_UP -> field.onKeyUp(event.keyCode, event)
+                        else -> false
+                    }
+                }
                 override fun performEditorAction(editorAction: Int): Boolean {
                     actions.add(editorAction)
                     return true
@@ -76,6 +84,19 @@ class DocumentTypingTest {
         field.setSelection(prefix.length, prefix.length + 2) // edit before the selection callback arrives
         emitText("OK".asK3String())
         assertEquals(prefix + "OK if if\nif\nif", field.text.toString())
+    }
+
+    @Test fun deletesAtTheLiveSelectionAfterANewline() = withEditor { field, writes, _ ->
+        val prefix = field.text.toString()
+        emitText("if".asK3String())
+        emitDescriptor(ImeActions.Enter)
+        handleUpdateSelection(K3TextRange(2))
+        emitBackspace()
+        assertEquals(prefix + "if", field.text.toString())
+        field.setSelection(prefix.length, field.length())
+        emitForwardDelete()
+        assertEquals(prefix, field.text.toString())
+        assertEquals(listOf("if", "\n"), writes)
     }
 
     @Test fun shiftIsOneShotAndRapidTapsCancel() = withEditor { _, _, _ ->

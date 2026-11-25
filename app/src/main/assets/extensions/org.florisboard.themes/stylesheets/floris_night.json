@@ -78,7 +78,7 @@
     "background": "var(--primary)",
     "foreground": "var(--on-surface)"
   },
-  "key[output=`@k3:action/enter`]": {
+  "key[output=`@fl:action/translate`]": {
     "background": "var(--primary)",
     "foreground": "var(--on-surface)"
   },
@@ -86,7 +86,7 @@
     "background": "var(--primary-variant)",
     "foreground": "var(--on-surface)"
   },
-  "key[output=`@k3:action/enter`]:pressed": {
+  "key[output=`@fl:action/translate`]:pressed": {
     "background": "var(--primary-variant)",
     "foreground": "var(--on-surface)"
   },
