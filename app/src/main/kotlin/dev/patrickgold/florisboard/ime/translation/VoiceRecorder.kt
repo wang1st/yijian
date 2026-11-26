@@ -17,9 +17,14 @@
 package dev.patrickgold.florisboard.ime.translation
 
 import android.annotation.SuppressLint
+import android.content.Context
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import dev.patrickgold.florisboard.FlorisApplication
 import dev.patrickgold.florisboard.lib.devtools.flogError
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -43,6 +48,53 @@ class VoiceRecorder {
     private var record: AudioRecord? = null
     private var thread: Thread? = null
     private val pcm = ByteArrayOutputStream()
+
+    /** App context, resolved lazily so construction never depends on app init order. */
+    private val context: Context by lazy { FlorisApplication.getHack().applicationContext }
+    private var audioManager: AudioManager? = null
+    private var focusRequest: AudioFocusRequest? = null
+
+    /**
+     * Requests exclusive transient audio focus so whatever music / video is playing pauses
+     * while the user is dictating. minSdk is 26, so the [AudioFocusRequest] API is always
+     * available. Focus failure is not fatal: we still record, other audio just keeps playing.
+     */
+    private fun requestExclusiveFocus() {
+        if (focusRequest != null) return
+        try {
+            val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            val attrs = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                .build()
+            val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
+                .setAudioAttributes(attrs)
+                .setWillPauseWhenDucked(true)
+                .setOnAudioFocusChangeListener { focus ->
+                    flogError { "yijian recorder: audio focus changed to $focus" }
+                }
+                .build()
+            val granted = am.requestAudioFocus(req) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+            if (granted) {
+                audioManager = am
+                focusRequest = req
+            } else {
+                flogError { "yijian recorder: exclusive audio focus not granted" }
+            }
+        } catch (e: Exception) {
+            flogError { "yijian recorder: audio focus request failed: ${e.message}" }
+        }
+    }
+
+    private fun abandonFocus() {
+        val req = focusRequest ?: return
+        focusRequest = null
+        try {
+            audioManager?.abandonAudioFocusRequest(req)
+        } catch (e: Exception) {
+            flogError { "yijian recorder: abandon focus failed: ${e.message}" }
+        }
+    }
 
     @Volatile
     var isRecording = false
@@ -71,6 +123,8 @@ class VoiceRecorder {
         if (isRecording) return@withContext true
         lastError = null
         pcm.reset()
+        // Pause other apps' playback while dictating, so they do not bleed into the mic.
+        requestExclusiveFocus()
         try {
             val minBuf = AudioRecord.getMinBufferSize(
                 SAMPLE_RATE,
@@ -87,6 +141,7 @@ class VoiceRecorder {
             if (rec.state != AudioRecord.STATE_INITIALIZED) {
                 lastError = "无法初始化麦克风"
                 rec.release()
+                abandonFocus()
                 return@withContext false
             }
             record = rec
@@ -105,6 +160,11 @@ class VoiceRecorder {
                         val size = synchronized(pcm) { pcm.size() }
                         if (elapsed >= MAX_SECONDS || size >= MAX_BYTES) {
                             isRecording = false
+                            // stop() is never called for an auto-stopped clip (the caller
+                            // early-returns on !isRecording), so release everything here.
+                            runCatching { rec.stop() }
+                            runCatching { rec.release() }
+                            abandonFocus()
                         }
                     }
                 } catch (e: Exception) {
@@ -114,10 +174,12 @@ class VoiceRecorder {
             true
         } catch (e: SecurityException) {
             lastError = "没有麦克风权限"
+            abandonFocus()
             false
         } catch (e: Exception) {
             lastError = "录音失败：${e.message}"
             flogError { "yijian recorder start: ${e.message}" }
+            abandonFocus()
             false
         }
     }
@@ -132,6 +194,7 @@ class VoiceRecorder {
         runCatching { record?.release() }
         record = null
         thread = null
+        abandonFocus()
         val data = synchronized(pcm) { pcm.toByteArray() }
         if (data.size < 1600) null else data  // <~50ms of audio: treat as empty
     }
