@@ -140,6 +140,9 @@ class ImeController(
 
     fun voiceCancel() = translationManager.cancelVoice()
 
+    /** Drops a transcription still in flight (the late result is discarded). */
+    fun cancelVoiceTranscription() = translationManager.cancelVoiceTranscription()
+
     /** Reads [text] aloud via DeepSeek TTS. */
     fun speak(text: String) = translationManager.speak(text)
 

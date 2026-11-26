@@ -16,10 +16,17 @@
 
 package dev.patrickgold.florisboard.ime.translation
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +45,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,6 +53,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
+import dev.patrickgold.florisboard.R
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -59,6 +71,10 @@ import org.k3lp.lib.text.asK3String
 
 /** Minimum Android touch target. */
 private val TouchTarget = 48.dp
+
+/** Material 3 error red, adaptive to light/dark instead of a single hardcoded value. */
+@Composable
+private fun errorColor(): Color = if (isSystemInDarkTheme()) Color(0xFFF2B8B5) else Color(0xFFB3261E)
 
 /**
  * yijian translation panel, rendered as its own region between the smartbar (toolbar) and the
@@ -83,81 +99,94 @@ fun TranslationPanel() {
     val status by imeController.translationStatus.collectAsState()
     val error by imeController.translationError.collectAsState()
     val voiceMsg by imeController.voiceStatus.collectAsState()
+    val voiceBusy by imeController.voiceBusy.collectAsState()
     val recorder = imeController.recorder
     val recording = recorder.isRecording
+    val micLevel by recorder.level.collectAsState()
     val translationToCopy by imeController.translationToCopy.collectAsState()
     val lastLesson by imeController.lastEnglishLesson.collectAsState()
     val candidates by imeController.translationCandidates.collectAsState()
-    // Pinyin mode takes over the panel: it is what the user is actively typing right now.
-    if (pinyinActive && (pinyinCandidates.isNotEmpty() || pinyinComposing.isNotEmpty())) {
-        PinyinPanel(
-            composing = pinyinComposing,
-            candidates = pinyinCandidates,
-            onPick = { word ->
-                imeController.updateStateBlocking {
-                    imeController.pinyin.commit(word, this)
-                }
-            },
-            onRaw = {
-                imeController.updateStateBlocking {
-                    val raw = imeController.pinyin.rawInput()
-                    imeController.pinyin.clear()
-                    if (raw.isNotEmpty()) emitTextDirect(raw.asK3String())
-                }
-            },
-        )
-        return
-    }
 
+    // Pinyin mode takes over the panel: it is what the user is actively typing right now.
+    val showPinyin = pinyinActive && (pinyinCandidates.isNotEmpty() || pinyinComposing.isNotEmpty())
     val hasError = status == TranslationManager.Status.ERROR && error != null
     val translating = status == TranslationManager.Status.TRANSLATING
-    if (candidates.isEmpty() && preedit.isEmpty() && voiceMsg == null && !recording && !hasError &&
-        !translating && undoable == null && lastLesson == null) {
-        return
+    val showMain = !(candidates.isEmpty() && preedit.isEmpty() && voiceMsg == null && !recording &&
+        !hasError && !translating && undoable == null && lastLesson == null)
+
+    // Animating the height keeps the whole keyboard from jumping when the panel
+    // appears or disappears.
+    AnimatedVisibility(
+        visible = showPinyin || showMain,
+        enter = expandVertically(animationSpec = tween(150)) + fadeIn(animationSpec = tween(150)),
+        exit = shrinkVertically(animationSpec = tween(150)) + fadeOut(animationSpec = tween(150)),
+    ) {
+        if (showPinyin) {
+            PinyinPanel(
+                composing = pinyinComposing,
+                candidates = pinyinCandidates,
+                onPick = { word ->
+                    imeController.updateStateBlocking {
+                        imeController.pinyin.commit(word, this)
+                    }
+                },
+                onRaw = {
+                    imeController.updateStateBlocking {
+                        val raw = imeController.pinyin.rawInput()
+                        imeController.pinyin.clear()
+                        if (raw.isNotEmpty()) emitTextDirect(raw.asK3String())
+                    }
+                },
+            )
+        } else {
+            val teacherCard = (candidates.firstOrNull() ?: lastLesson)
+                ?.takeIf { it.correctedEnglish.isNotBlank() || it.note.isNotBlank() || it.corrections.isNotEmpty() }
+
+            TranslationPanelContent(
+                preedit = preedit,
+                translating = translating,
+                error = if (status == TranslationManager.Status.ERROR) error else null,
+                teacherCard = teacherCard,
+                voiceMessage = if (recording) stringResource(R.string.yijian__voice_recording) else voiceMsg,
+                micLevel = if (recording) micLevel else null,
+                onCancelVoice = if (voiceBusy && !recording) {
+                    { imeController.cancelVoiceTranscription() }
+                } else null,
+                onSpeak = { text -> imeController.speak(text) },
+                onCommitEnglish = { english ->
+                    imeController.commitTeacherEnglish()
+                },
+                candidates = candidates,
+                onClick = { candidate ->
+                    imeController.updateStateBlocking {
+                        emitCandidate(candidate)
+                    }
+                },
+                onDismiss = {
+                    // Dismissing commits the raw buffered English (if any) and hides the list
+                    imeController.updateStateBlocking {
+                        translationCommitBufferAsRaw()
+                    }
+                },
+                onClear = {
+                    // Discard whatever is in the editor for this sentence and hide the panel
+                    imeController.updateStateBlocking {
+                        translationClearAll()
+                    }
+                },
+                onUndo = {
+                    imeController.updateStateBlocking { undoLastReplacement() }
+                },
+                onCopy = translationToCopy?.let { text ->
+                    {
+                        imeController.clipboardManager.addNewPlaintext(text)
+                        imeController.updateStateBlocking { translationClearAll() }
+                    }
+                },
+                undoAvailable = undoable != null,
+            )
+        }
     }
-
-    val teacherCard = (candidates.firstOrNull() ?: lastLesson)
-        ?.takeIf { it.correctedEnglish.isNotBlank() || it.note.isNotBlank() || it.corrections.isNotEmpty() }
-
-    TranslationPanelContent(
-        preedit = preedit,
-        translating = translating,
-        error = if (status == TranslationManager.Status.ERROR) error else null,
-        teacherCard = teacherCard,
-        voiceMessage = if (recording) "🎤 正在录音…（松开结束）" else voiceMsg,
-        onSpeak = { text -> imeController.speak(text) },
-        onCommitEnglish = { english ->
-            imeController.commitTeacherEnglish()
-        },
-        candidates = candidates,
-        onClick = { candidate ->
-            imeController.updateStateBlocking {
-                emitCandidate(candidate)
-            }
-        },
-        onDismiss = {
-            // Dismissing commits the raw buffered English (if any) and hides the list
-            imeController.updateStateBlocking {
-                translationCommitBufferAsRaw()
-            }
-        },
-        onClear = {
-            // Discard whatever is in the editor for this sentence and hide the panel
-            imeController.updateStateBlocking {
-                translationClearAll()
-            }
-        },
-        onUndo = {
-            imeController.updateStateBlocking { undoLastReplacement() }
-        },
-        onCopy = translationToCopy?.let { text ->
-            {
-                imeController.clipboardManager.addNewPlaintext(text)
-                imeController.updateStateBlocking { translationClearAll() }
-            }
-        },
-        undoAvailable = undoable != null,
-    )
 }
 
 @Composable
@@ -167,6 +196,8 @@ private fun TranslationPanelContent(
     error: String?,
     teacherCard: TranslationSuggestionCandidate?,
     voiceMessage: String?,
+    micLevel: Int?,
+    onCancelVoice: (() -> Unit)?,
     onSpeak: (String) -> Unit,
     onCommitEnglish: (String) -> Unit,
     candidates: List<SuggestionCandidate>,
@@ -191,9 +222,11 @@ private fun TranslationPanelContent(
                 .height(3.dp)
                 .background(onSurface.copy(alpha = 0.18f)),
         )
+        // Everything scrollable: cards, messages, drafts, candidates.
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .weight(1f, fill = false)
                 .verticalScroll(rememberScrollState()),
         ) {
             if (teacherCard != null) {
@@ -206,11 +239,16 @@ private fun TranslationPanelContent(
                 Divider(onSurface)
             }
             if (voiceMessage != null) {
-                VoiceRow(message = voiceMessage, onSurface = onSurface)
+                VoiceRow(
+                    message = voiceMessage,
+                    onSurface = onSurface,
+                    micLevel = micLevel,
+                    onCancel = onCancelVoice,
+                )
                 Divider(onSurface)
             }
             if (translating && preedit.isEmpty()) {
-                VoiceRow(message = "正在翻译…", onSurface = onSurface)
+                VoiceRow(message = stringResource(R.string.yijian__translating), onSurface = onSurface)
             }
             // Show the error on its own row when there is no draft row to attach it to
             if (preedit.isEmpty() && error != null) {
@@ -232,28 +270,35 @@ private fun TranslationPanelContent(
                 }
                 CandidateRow(
                     text = candidate.text.toString(),
+                    recommended = n == 0,
                     onSurface = onSurface,
                     onClick = { onClick(candidate) },
                 )
             }
             if (onCopy != null) {
-                ActionButton("复制译文", onSurface, Modifier.fillMaxWidth(), onClick = onCopy)
+                ActionButton(stringResource(R.string.yijian__copy_translation), onSurface, Modifier.fillMaxWidth(), onClick = onCopy)
             }
-            if (undoAvailable) {
-                Divider(onSurface)
-                UndoRow(onSurface = onSurface, onUndo = onUndo)
-            }
-            if (preedit.isNotEmpty()) {
-                Divider(onSurface)
-                ActionRows(onSurface = onSurface, onDismiss = onDismiss, onClear = onClear)
-            } else if (translating || candidates.isNotEmpty() || error != null || voiceMessage != null || teacherCard != null) {
-                ActionButton(
-                    text = if (translating || candidates.isNotEmpty()) "保留原文" else "关闭",
-                    onSurface = onSurface,
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = onClear,
-                )
-            }
+        }
+        // Footer is pinned below the scroll area so the primary actions are always
+        // reachable no matter how tall the content above is.
+        if (undoAvailable) {
+            Divider(onSurface)
+            UndoRow(onSurface = onSurface, onUndo = onUndo)
+        }
+        if (preedit.isNotEmpty()) {
+            Divider(onSurface)
+            ActionRows(onSurface = onSurface, onDismiss = onDismiss, onClear = onClear)
+        } else if (translating || candidates.isNotEmpty() || error != null || voiceMessage != null || teacherCard != null) {
+            Divider(onSurface)
+            ActionButton(
+                text = stringResource(
+                    if (translating || candidates.isNotEmpty()) R.string.yijian__keep_original
+                    else R.string.yijian__close
+                ),
+                onSurface = onSurface,
+                modifier = Modifier.fillMaxWidth(),
+                onClick = onClear,
+            )
         }
     }
 }
@@ -266,7 +311,7 @@ private fun PreeditRow(
     onSurface: androidx.compose.ui.graphics.Color,
 ) {
     val accent = when {
-        error != null -> androidx.compose.ui.graphics.Color(0xFFB3261E)
+        error != null -> errorColor()
         translating -> animateColorAsState(onSurface.copy(alpha = 0.45f), label = "translatingAccent").value
         else -> onSurface.copy(alpha = 0.25f)
     }
@@ -310,7 +355,7 @@ private fun PreeditRow(
             if (translating) {
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "翻译中…",
+                    text = stringResource(R.string.yijian__translating_short),
                     color = onSurface.copy(alpha = 0.55f),
                     fontSize = 12.sp,
                     maxLines = 1,
@@ -323,7 +368,7 @@ private fun PreeditRow(
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = error,
-                color = androidx.compose.ui.graphics.Color(0xFFB3261E),
+                color = errorColor(),
                 fontSize = 12.sp,
                 softWrap = true,
                 modifier = Modifier
@@ -335,7 +380,12 @@ private fun PreeditRow(
 }
 
 @Composable
-private fun CandidateRow(text: String, onSurface: androidx.compose.ui.graphics.Color, onClick: () -> Unit) {
+private fun CandidateRow(
+    text: String,
+    recommended: Boolean,
+    onSurface: androidx.compose.ui.graphics.Color,
+    onClick: () -> Unit,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -349,7 +399,25 @@ private fun CandidateRow(text: String, onSurface: androidx.compose.ui.graphics.C
             color = onSurface,
             fontSize = 18.sp,
             fontWeight = FontWeight.Medium,
+            modifier = Modifier.weight(1f, fill = true),
         )
+        if (recommended) {
+            // The model orders candidates by naturalness; mark the top one as the pick.
+            Spacer(modifier = Modifier.width(10.dp))
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(onSurface.copy(alpha = 0.14f))
+                    .padding(horizontal = 7.dp, vertical = 3.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.yijian__recommended),
+                    color = onSurface.copy(alpha = 0.72f),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
     }
 }
 
@@ -361,7 +429,7 @@ private fun ActionRows(
 ) {
     Row(modifier = Modifier.fillMaxWidth()) {
         ActionButton(
-            text = "输入识别原文",
+            text = stringResource(R.string.yijian__type_raw),
             onSurface = onSurface,
             modifier = Modifier.weight(1f),
             onClick = onDismiss,
@@ -374,7 +442,7 @@ private fun ActionRows(
                 .background(onSurface.copy(alpha = 0.10f)),
         )
         ActionButton(
-            text = "✕ 清除",
+            text = stringResource(R.string.yijian__clear),
             onSurface = onSurface,
             danger = true,
             modifier = Modifier.weight(1f),
@@ -433,6 +501,7 @@ private fun TeacherCard(
     var expanded by remember(card.requestId) { mutableStateOf(false) }
     val english = card.correctedEnglish
     val hasEnglish = english.isNotBlank()
+    val context = androidx.compose.ui.platform.LocalContext.current
     Column(
         modifier = Modifier.fillMaxWidth().background(onSurface.copy(alpha = 0.05f))
             .padding(start = 16.dp, end = 12.dp, bottom = 10.dp),
@@ -442,7 +511,7 @@ private fun TeacherCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = if (hasEnglish) "地道英文" else "英语讲解",
+                text = stringResource(if (hasEnglish) R.string.yijian__native_english else R.string.yijian__english_notes),
                 modifier = Modifier.weight(1f).semantics { heading() },
                 color = onSurface.copy(alpha = 0.78f),
                 fontSize = 13.sp,
@@ -450,14 +519,14 @@ private fun TeacherCard(
             )
             if (hasEnglish) {
                 ActionButton(
-                    text = "朗读",
+                    text = stringResource(R.string.yijian__speak),
                     onSurface = onSurface,
-                    modifier = Modifier.semantics { contentDescription = "朗读英文" },
+                    modifier = Modifier.semantics { contentDescription = context.getString(R.string.yijian__speak_desc) },
                     onClick = { onSpeak(english) },
                 )
             }
             ActionButton(
-                text = if (expanded) "收起" else "讲解",
+                text = stringResource(if (expanded) R.string.yijian__collapse else R.string.yijian__explain),
                 onSurface = onSurface,
                 onClick = { expanded = !expanded },
             )
@@ -467,7 +536,7 @@ private fun TeacherCard(
                 text = english,
                 color = onSurface,
                 modifier = Modifier.fillMaxWidth().clickable { onCommitEnglish(english) }
-                    .semantics { contentDescription = "点击上屏地道英文" },
+                    .semantics { contentDescription = context.getString(R.string.yijian__commit_english_desc) },
                 fontSize = 20.sp,
                 lineHeight = 27.sp,
                 fontWeight = FontWeight.Medium,
@@ -481,7 +550,11 @@ private fun TeacherCard(
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 if (card.originalEnglish.isNotBlank() && card.originalEnglish != english) {
-                    Text("原文　${card.originalEnglish}", color = onSurface.copy(alpha = 0.75f), fontSize = 14.sp)
+                    Text(
+                        "${context.getString(R.string.yijian__original_label)}　${card.originalEnglish}",
+                        color = onSurface.copy(alpha = 0.75f),
+                        fontSize = 14.sp,
+                    )
                 }
                 for (item in card.corrections) {
                     Text("${item.wrong} → ${item.right}", color = onSurface, fontWeight = FontWeight.Medium)
@@ -499,6 +572,8 @@ private fun VoiceRow(
     message: String,
     onSurface: androidx.compose.ui.graphics.Color,
     isError: Boolean = false,
+    micLevel: Int? = null,
+    onCancel: (() -> Unit)? = null,
 ) {
     Row(
         modifier = Modifier
@@ -507,13 +582,45 @@ private fun VoiceRow(
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (micLevel != null) {
+            MicMeter(level = micLevel, onSurface = onSurface)
+            Spacer(modifier = Modifier.width(12.dp))
+        }
         Text(
             text = message,
-            color = if (isError) androidx.compose.ui.graphics.Color(0xFFB3261E) else onSurface.copy(alpha = 0.8f),
+            color = if (isError) errorColor() else onSurface.copy(alpha = 0.8f),
             fontSize = 14.sp,
             softWrap = true,
             modifier = Modifier.weight(1f, fill = true),
         )
+        if (onCancel != null) {
+            Spacer(modifier = Modifier.width(8.dp))
+            ActionButton(
+                text = stringResource(R.string.yijian__cancel),
+                onSurface = onSurface,
+                onClick = onCancel,
+            )
+        }
+    }
+}
+
+/** Eight-bar microphone level meter: confirms that speech is actually being captured. */
+@Composable
+private fun MicMeter(level: Int, onSurface: androidx.compose.ui.graphics.Color) {
+    val lit = (level / 100f * 8).toInt().coerceIn(if (level > 0) 1 else 0, 8)
+    Row(verticalAlignment = Alignment.Bottom) {
+        for (i in 0 until 8) {
+            if (i > 0) Spacer(modifier = Modifier.width(2.dp))
+            Box(
+                modifier = Modifier
+                    .width(3.dp)
+                    .height((6 + i * 2).dp)
+                    .clip(RoundedCornerShape(1.5.dp))
+                    .background(
+                        onSurface.copy(alpha = if (i < lit) 0.85f else 0.15f)
+                    ),
+            )
+        }
     }
 }
 
@@ -531,7 +638,7 @@ private fun UndoRow(onSurface: androidx.compose.ui.graphics.Color, onUndo: () ->
         Text(text = "↩", color = onSurface.copy(alpha = 0.7f), fontSize = 15.sp)
         Spacer(modifier = Modifier.width(8.dp))
         Text(
-            text = "撤销，恢复原文",
+            text = stringResource(R.string.yijian__undo_restore),
             color = onSurface.copy(alpha = 0.75f),
             fontSize = 13.sp,
         )
@@ -576,7 +683,7 @@ private fun PinyinPanel(
                     modifier = Modifier.weight(1f, fill = true),
                 )
                 Text(
-                    text = "用英文",
+                    text = stringResource(R.string.yijian__use_english),
                     color = onSurface.copy(alpha = 0.45f),
                     fontSize = 12.sp,
                 )
@@ -600,31 +707,49 @@ private fun PinyinPanel(
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = "中文输入",
+                text = stringResource(R.string.yijian__chinese_input),
                 color = onSurface.copy(alpha = 0.6f),
                 fontSize = 11.sp,
             )
         }
         Divider(onSurface)
-        // Candidates, horizontally scrollable
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            candidates.forEach { word ->
+        // Candidates, horizontally scrollable; a fade at the right edge signals that
+        // more candidates exist off-screen.
+        val pinyinScroll = rememberScrollState()
+        val canScrollForward by remember { derivedStateOf { pinyinScroll.canScrollForward } }
+        Box(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(pinyinScroll)
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                candidates.forEach { word ->
+                    Box(
+                        modifier = Modifier
+                            .heightIn(min = 44.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable { onPick(word) }
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(text = word, color = onSurface, fontSize = 18.sp)
+                    }
+                }
+            }
+            if (canScrollForward) {
                 Box(
                     modifier = Modifier
-                        .heightIn(min = 44.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .clickable { onPick(word) }
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(text = word, color = onSurface, fontSize = 18.sp)
-                }
+                        .align(Alignment.CenterEnd)
+                        .width(28.dp)
+                        .height(48.dp)
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(Color.Transparent, onSurface.copy(alpha = 0.06f))
+                            )
+                        ),
+                )
             }
         }
     }

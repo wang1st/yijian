@@ -16,10 +16,13 @@
 
 package dev.patrickgold.florisboard.ime.translation
 
+import android.content.Context
 import android.media.AudioAttributes
+import android.media.AudioFocusRequest
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
+import dev.patrickgold.florisboard.FlorisApplication
 import dev.patrickgold.florisboard.lib.devtools.flogError
 import java.io.ByteArrayOutputStream
 
@@ -34,6 +37,45 @@ object AudioPlayer {
     @Volatile
     private var activeTrack: AudioTrack? = null
 
+    private var audioManager: AudioManager? = null
+    private var focusRequest: AudioFocusRequest? = null
+
+    /**
+     * Requests transient audio focus so music playing in other apps ducks while the
+     * translation is read aloud, and comes back afterwards. Failure is not fatal.
+     */
+    private fun requestDuckFocus() {
+        if (focusRequest != null) return
+        try {
+            val context = FlorisApplication.getHack().applicationContext
+            val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            val attrs = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                .build()
+            val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                .setAudioAttributes(attrs)
+                .setOnAudioFocusChangeListener { }
+                .build()
+            if (am.requestAudioFocus(req) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+                audioManager = am
+                focusRequest = req
+            }
+        } catch (e: Exception) {
+            flogError { "yijian player: focus request failed: ${e.message}" }
+        }
+    }
+
+    private fun abandonFocus() {
+        val req = focusRequest ?: return
+        focusRequest = null
+        try {
+            audioManager?.abandonAudioFocusRequest(req)
+        } catch (e: Exception) {
+            flogError { "yijian player: abandon focus failed: ${e.message}" }
+        }
+    }
+
     fun play(wav: ByteArray) {
         try {
             stop()
@@ -42,6 +84,8 @@ object AudioPlayer {
                 flogError { "yijian player: no PCM data in TTS payload" }
                 return
             }
+            // Duck other apps' music while the translation is read aloud.
+            requestDuckFocus()
             val fmt = AudioFormat.Builder()
                 .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
                 .setSampleRate(24000)
@@ -71,11 +115,17 @@ object AudioPlayer {
                 } finally {
                     runCatching { track.stop() }
                     runCatching { track.release() }
-                    if (activeTrack === track) activeTrack = null
+                    // A newer play() may have started meanwhile; only the active clip
+                    // releases the focus it acquired.
+                    if (activeTrack === track) {
+                        activeTrack = null
+                        abandonFocus()
+                    }
                 }
             }.start()
         } catch (e: Exception) {
             flogError { "yijian player: ${e.message}" }
+            abandonFocus()
         }
     }
 
@@ -85,6 +135,7 @@ object AudioPlayer {
             runCatching { track.release() }
         }
         activeTrack = null
+        abandonFocus()
     }
 
     /** Extracts the `data` chunk payload from a WAV container. */

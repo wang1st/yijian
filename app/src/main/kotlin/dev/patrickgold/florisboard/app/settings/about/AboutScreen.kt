@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Policy
 import androidx.compose.material3.ListItemDefaults
@@ -86,13 +87,27 @@ fun AboutScreen() {
                 )
             }
             SegmentedListColumn {
-                val count = 7
+                val count = 9
                 Preference(
                     onClick = { uriHandler.openUri("https://github.com/wang1st") },
                     shapes = ListItemDefaults.segmentedShapes(0, count),
                     icon = Icons.Outlined.Person,
                     title = "作者",
                     summary = "wang1st · GitHub",
+                )
+                Preference(
+                    onClick = { uriHandler.openUri("https://weibo.com/u/1642421103") },
+                    shapes = ListItemDefaults.segmentedShapes(1, count),
+                    icon = Icons.Outlined.Link,
+                    title = "微博",
+                    summary = "weibo.com/u/1642421103",
+                )
+                Preference(
+                    onClick = { uriHandler.openUri("https://x.com/qq831261") },
+                    shapes = ListItemDefaults.segmentedShapes(2, count),
+                    icon = Icons.Outlined.Link,
+                    title = "X（Twitter）",
+                    summary = "x.com/qq831261",
                 )
                 Preference(
                     onClick = {
@@ -107,7 +122,7 @@ fun AboutScreen() {
                             ).show()
                         }
                     },
-                    shapes = ListItemDefaults.segmentedShapes(1, count),
+                    shapes = ListItemDefaults.segmentedShapes(3, count),
                     icon = Icons.Outlined.Info,
                     title = stringRes(R.string.about__version__title),
                     summary = appVersion,
@@ -124,7 +139,7 @@ fun AboutScreen() {
                 }
                 Preference(
                     onClick = { uriHandler.openUri(changelogUrl) },
-                    shapes = ListItemDefaults.segmentedShapes(2, count),
+                    shapes = ListItemDefaults.segmentedShapes(4, count),
                     icon = Icons.Default.History,
                     title = stringRes(R.string.about__changelog__title),
                     summary = stringRes(R.string.about__changelog__summary),
@@ -132,7 +147,7 @@ fun AboutScreen() {
                 val repoUrl = stringRes(R.string.florisboard__repo_url)
                 Preference(
                     onClick = { uriHandler.openUri(repoUrl) },
-                    shapes = ListItemDefaults.segmentedShapes(3, count),
+                    shapes = ListItemDefaults.segmentedShapes(5, count),
                     icon = Icons.Default.Code,
                     title = stringRes(R.string.about__repository__title),
                     summary = stringRes(R.string.about__repository__summary),
@@ -140,21 +155,21 @@ fun AboutScreen() {
                 val privacyPolicyUrl = stringRes(R.string.florisboard__privacy_policy_url)
                 Preference(
                     onClick = { uriHandler.openUri(privacyPolicyUrl) },
-                    shapes = ListItemDefaults.segmentedShapes(4, count),
+                    shapes = ListItemDefaults.segmentedShapes(6, count),
                     icon = Icons.Outlined.Policy,
                     title = stringRes(R.string.about__privacy_policy__title),
                     summary = stringRes(R.string.about__privacy_policy__summary),
                 )
                 Preference(
                     onClick = { navController.navigate(Routes.Settings.ProjectLicense) },
-                    shapes = ListItemDefaults.segmentedShapes(5, count),
+                    shapes = ListItemDefaults.segmentedShapes(7, count),
                     icon = Icons.Outlined.Description,
                     title = stringRes(R.string.about__project_license__title),
                     summary = stringRes(R.string.about__project_license__summary, "license_name" to "Apache 2.0"),
                 )
                 Preference(
                     onClick = { navController.navigate(Routes.Settings.ThirdPartyLicenses) },
-                    shapes = ListItemDefaults.segmentedShapes(6, count),
+                    shapes = ListItemDefaults.segmentedShapes(8, count),
                     icon = Icons.Outlined.Description,
                     title = stringRes(id = R.string.about__third_party_licenses__title),
                     summary = stringRes(id = R.string.about__third_party_licenses__summary),

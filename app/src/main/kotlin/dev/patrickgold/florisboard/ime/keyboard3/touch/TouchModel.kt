@@ -360,8 +360,15 @@ private fun computeTouchKeyboard(
                         isSuitableForSimplePopup = attrs.isSuitableForSimplePopup(),
                         isSuitableForExtendedPopup = popups.isNotEmpty(),
                         extendedPopupKeys = popups,
-                        // The space bar's voice long-press is discoverable by design; hint it
-                        longPressKeyHint = if (options.longPressKeyHintEnabled) popups.firstOrNull()?.display else null,
+                        // The space bar's voice long-press is discoverable by design; hint it.
+                        // The comma (') and period (?) long-presses are special-cased in
+                        // PointerTracker with no popup, so give them an always-on faint hint
+                        // even while the global hint setting is off.
+                        longPressKeyHint = when (key.id.value) {
+                            "comma" -> "'".asK3String()
+                            "period" -> "?".asK3String()
+                            else -> if (options.longPressKeyHintEnabled) popups.firstOrNull()?.display else null
+                        },
                         longPressKeyHintPlacement = options.longPressKeyHintPlacement,
                         shouldOverrideDisplayWithMultiTapKeys =
                             model.displays.byKeyId[key.id] == null && multiTapKeys.isNotEmpty(),

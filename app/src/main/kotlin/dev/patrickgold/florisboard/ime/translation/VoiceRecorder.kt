@@ -27,8 +27,11 @@ import android.media.MediaRecorder
 import dev.patrickgold.florisboard.FlorisApplication
 import dev.patrickgold.florisboard.lib.devtools.flogError
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
+import kotlin.math.log10
+import kotlin.math.sqrt
 
 /**
  * Records mono 16-bit PCM and wraps it as a WAV file, which is what DeepSeek's
@@ -104,6 +107,30 @@ class VoiceRecorder {
     var lastError: String? = null
         private set
 
+    /**
+     * Live microphone level while recording, 0–100 (roughly perceptual, dB-scaled).
+     * Updated per audio chunk so the panel can show that speech is actually being captured.
+     */
+    val level = MutableStateFlow(0)
+
+    /** RMS of a little-endian 16-bit PCM chunk mapped to a 0–100 dB-ish scale. */
+    private fun computeLevel(buf: ByteArray, n: Int): Int {
+        val samples = n / 2
+        if (samples <= 0) return 0
+        var sum = 0.0
+        var i = 0
+        while (i + 1 < n) {
+            val s = (buf[i].toInt() and 0xff) or (buf[i + 1].toInt() shl 8)
+            sum += s * s
+            i += 2
+        }
+        val rms = sqrt(sum / samples)
+        if (rms < 1.0) return 0
+        // -60 dB .. 0 dB mapped onto 0..100
+        val db = 20.0 * log10(rms / 32767.0)
+        return ((db + 60.0) / 60.0 * 100.0).toInt().coerceIn(0, 100)
+    }
+
     /** True when a microphone is available at all. */
     fun canRecord(): Boolean {
         return try {
@@ -139,7 +166,7 @@ class VoiceRecorder {
                 minBuf * 2,
             )
             if (rec.state != AudioRecord.STATE_INITIALIZED) {
-                lastError = "无法初始化麦克风"
+                lastError = context.getString(dev.patrickgold.florisboard.R.string.yijian__mic_init_failed)
                 rec.release()
                 abandonFocus()
                 return@withContext false
@@ -155,11 +182,13 @@ class VoiceRecorder {
                         val n = rec.read(buf, 0, buf.size)
                         if (n > 0) {
                             synchronized(pcm) { pcm.write(buf, 0, n) }
+                            level.value = computeLevel(buf, n)
                         }
                         val elapsed = (System.currentTimeMillis() - started) / 1000
                         val size = synchronized(pcm) { pcm.size() }
                         if (elapsed >= MAX_SECONDS || size >= MAX_BYTES) {
                             isRecording = false
+                            level.value = 0
                             // stop() is never called for an auto-stopped clip (the caller
                             // early-returns on !isRecording), so release everything here.
                             runCatching { rec.stop() }
@@ -173,11 +202,11 @@ class VoiceRecorder {
             }.also { it.start() }
             true
         } catch (e: SecurityException) {
-            lastError = "没有麦克风权限"
+            lastError = context.getString(dev.patrickgold.florisboard.R.string.yijian__mic_permission)
             abandonFocus()
             false
         } catch (e: Exception) {
-            lastError = "录音失败：${e.message}"
+            lastError = context.getString(dev.patrickgold.florisboard.R.string.yijian__record_failed) + (e.message ?: "")
             flogError { "yijian recorder start: ${e.message}" }
             abandonFocus()
             false
@@ -187,6 +216,7 @@ class VoiceRecorder {
     /** Stops recording and returns the PCM payload (may be null when nothing was captured). */
     suspend fun stop(): ByteArray? = withContext(Dispatchers.IO) {
         isRecording = false
+        level.value = 0
         runCatching { thread?.join(1500) }
         runCatching {
             record?.stop()

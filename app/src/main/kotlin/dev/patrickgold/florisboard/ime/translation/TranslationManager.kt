@@ -17,6 +17,8 @@
 package dev.patrickgold.florisboard.ime.translation
 
 import androidx.compose.ui.graphics.vector.ImageVector
+import dev.patrickgold.florisboard.FlorisApplication
+import dev.patrickgold.florisboard.R
 import dev.patrickgold.florisboard.app.FlorisPreferenceStore
 import dev.patrickgold.florisboard.ime.editor.InputAttributes
 import dev.patrickgold.florisboard.ime.keyboard3.ImeController
@@ -152,6 +154,10 @@ class TranslationManager(
     /** Last voice-specific message (recognised text or a voice error). */
     val voiceStatus = MutableStateFlow<String?>(null)
 
+    /** Cancelling transcription increments this; in-flight results with a stale ticket are dropped. */
+    @Volatile
+    private var voiceTicket = 0L
+
     private val buffer = StringBuilder()
     val preeditText = MutableStateFlow("")
 
@@ -271,22 +277,25 @@ class TranslationManager(
 
     // ---- Voice input ----------------------------------------------------------------
 
+    /** Resolves a string resource through the app context (safe after app init). */
+    private fun str(res: Int): String = FlorisApplication.getHack().getString(res)
+
     /** Starts recording. Returns false (with a message) when the mic is unavailable. */
     fun startVoice(): Boolean {
         if (recorder.isRecording) return true
         if (!prefs.translation.enabled.get()) {
-            voiceStatus.value = "先在设置里打开 AI 翻译"
+            voiceStatus.value = str(R.string.yijian__enable_translation_first)
             return false
         }
         if (!recorder.canRecord()) {
-            voiceStatus.value = "麦克风不可用"
+            voiceStatus.value = str(R.string.yijian__mic_unavailable)
             return false
         }
-        voiceStatus.value = "正在录音…松开结束"
+        voiceStatus.value = str(R.string.yijian__voice_recording_hint)
         scope.launch {
             val ok = recorder.start()
             if (!ok) {
-                voiceStatus.value = recorder.lastError ?: "录音启动失败"
+                voiceStatus.value = recorder.lastError ?: str(R.string.yijian__voice_start_failed)
             }
         }
         return true
@@ -296,22 +305,25 @@ class TranslationManager(
     fun stopVoiceAndTranslate() {
         if (!recorder.isRecording) return
         val ticket = requestId
+        val myVoiceTicket = ++voiceTicket
         val editor = imeController.snapshotState().editor
         scope.launch {
             voiceBusy.value = true
-            voiceStatus.value = "识别中…"
+            voiceStatus.value = str(R.string.yijian__recognizing)
             try {
                 val pcm = recorder.stop()
                 if (pcm == null) {
-                    voiceStatus.value = "没听到声音"
+                    voiceStatus.value = str(R.string.yijian__no_sound)
                     return@launch
                 }
                 val wav = recorder.toWav(pcm)
                 val client = SpeechClient(prefs.translation.baseUrl.get(), prefs.translation.apiKey.get())
                 val result = withContext(Dispatchers.IO) { client.transcribe(wav) }
+                // The user cancelled while the request was in flight: drop the result.
+                if (myVoiceTicket != voiceTicket) return@launch
                 val said = result.text.trim()
                 if (said.isEmpty()) {
-                    voiceStatus.value = "没听清，再说一次"
+                    voiceStatus.value = str(R.string.yijian__not_clear)
                     return@launch
                 }
                 imeController.updateState {
@@ -324,17 +336,26 @@ class TranslationManager(
                     translateSentence(said, context, range = null)
                 }
             } catch (e: SpeechException) {
+                if (myVoiceTicket != voiceTicket) return@launch
                 voiceStatus.value = e.message
-                setStatus(Status.ERROR, e.message ?: "语音识别失败")
+                setStatus(Status.ERROR, e.message ?: str(R.string.yijian__voice_failed))
             } catch (e: Exception) {
+                if (myVoiceTicket != voiceTicket) return@launch
                 flogError { "yijian voice: ${e.message}" }
-                voiceStatus.value = "语音识别失败"
-                setStatus(Status.ERROR, "语音识别失败")
+                voiceStatus.value = str(R.string.yijian__voice_failed)
+                setStatus(Status.ERROR, str(R.string.yijian__voice_failed))
             } finally {
-                voiceBusy.value = false
+                if (myVoiceTicket == voiceTicket) voiceBusy.value = false
                 recorder.reset()
             }
         }
+    }
+
+    /** Cancels an in-flight transcription: the late result is dropped when it arrives. */
+    fun cancelVoiceTranscription() {
+        voiceTicket++
+        voiceBusy.value = false
+        voiceStatus.value = null
     }
 
     /** Cancels recording without sending anything to the model. */
@@ -352,7 +373,7 @@ class TranslationManager(
     fun speak(text: String) {
         if (text.isBlank()) return
         scope.launch {
-            voiceStatus.value = "合成语音…"
+            voiceStatus.value = str(R.string.yijian__synthesizing)
             try {
                 val client = SpeechClient(prefs.translation.baseUrl.get(), prefs.translation.apiKey.get())
                 val wav = withContext(Dispatchers.IO) { client.synthesize(text) }
@@ -360,7 +381,7 @@ class TranslationManager(
                 withContext(Dispatchers.Main) { AudioPlayer.play(wav) }
             } catch (e: Exception) {
                 flogError { "yijian tts: ${e.message}" }
-                voiceStatus.value = (e as? SpeechException)?.message ?: "语音合成失败"
+                voiceStatus.value = (e as? SpeechException)?.message ?: str(R.string.yijian__synthesize_failed)
             }
         }
     }
@@ -369,20 +390,20 @@ class TranslationManager(
     fun translateNow(state: ImeState) {
         if (!preeditActive(state)) {
             dismissRequest()
-            setError("当前输入框未开启翻译")
+            setError(str(R.string.yijian__translation_disabled_here))
             return
         }
         val ic = state.editor.ic.get()
         val window = ic?.translationWindow(state.editor.reportedCaret)
         if (ic == null || window == null || window.selected.isNotEmpty()) {
             dismissRequest()
-            setError(if (window == null) "读不到光标位置，请重新点一下输入框" else "请将光标放在要翻译的文字末尾")
+            setError(str(if (window == null) R.string.yijian__no_cursor else R.string.yijian__caret_at_end))
             return
         }
         val raw = textToTranslate(window.untranslatedSuffix(accepted).currentParagraph())
         if (!hasTranslatableContent(raw, requireTwoWords = false)) {
             dismissRequest()
-            setError("光标前没有待翻译的文字")
+            setError(str(R.string.yijian__nothing_to_translate))
             return
         }
         val prefix = window.before.dropLast(raw.length)
@@ -519,26 +540,30 @@ class TranslationManager(
         val msg = e.message.orEmpty()
         val detail = msg.subSequence(0, minOf(msg.length, 160)).toString()
         return when {
-            msg.contains("HTTP 401") || msg.contains("HTTP 403") -> "Key 无效（401/403）"
-            msg.contains("HTTP 402") -> "余额不足（402）"
-            msg.contains("HTTP 429") -> "请求太频繁（429）"
-            msg.contains("HTTP 5") -> "服务端出错（${msg.substringBefore(':').trim()}）"
-            msg.contains("HTTP ") -> detail.substringBefore(':').trim() + "：接口报错"
-            msg.contains("API key not configured") -> "还没填 API Key"
+            msg.contains("HTTP 401") || msg.contains("HTTP 403") -> str(R.string.yijian__err_key_invalid)
+            msg.contains("HTTP 402") -> str(R.string.yijian__err_no_balance)
+            msg.contains("HTTP 429") -> str(R.string.yijian__err_rate_limited)
+            msg.contains("HTTP 5") -> FlorisApplication.getHack().getString(
+                R.string.yijian__err_server, msg.substringBefore(':').trim())
+            msg.contains("HTTP ") -> FlorisApplication.getHack().getString(
+                R.string.yijian__err_api, detail.substringBefore(':').trim())
+            msg.contains("API key not configured") -> str(R.string.yijian__err_no_key)
             msg.contains("timed out") || e is java.net.SocketTimeoutException ->
-                "网络超时（${readTimeoutSeconds}s）"
-            e is java.net.UnknownHostException -> "无法连接服务器，检查网络"
-            e is java.net.ConnectException -> "连接被拒绝"
-            e is javax.net.ssl.SSLException -> "SSL 握手失败（可能是代理/VPN）"
-            msg.contains("模型没有给出译文") -> "模型没给出译文，重试一次"
-            msg.contains("回复被截断") -> "回复两次都被截断，稍后再试"
-            msg.contains("模型返回为空") -> "模型返回为空，稍后再试"
-            msg.contains("模型返回格式异常") -> "模型返回格式异常，稍后再试"
-            e is org.json.JSONException -> "模型返回格式异常，稍后再试"
+                FlorisApplication.getHack().getString(R.string.yijian__err_timeout, readTimeoutSeconds)
+            e is java.net.UnknownHostException -> str(R.string.yijian__err_no_host)
+            e is java.net.ConnectException -> str(R.string.yijian__err_refused)
+            e is javax.net.ssl.SSLException -> str(R.string.yijian__err_ssl)
+            // These match internal exception messages thrown above, which stay hardcoded
+            // on purpose — only the user-facing outputs are extracted.
+            msg.contains("模型没有给出译文") -> str(R.string.yijian__err_no_translation)
+            msg.contains("回复被截断") -> str(R.string.yijian__err_truncated)
+            msg.contains("模型返回为空") -> str(R.string.yijian__err_empty)
+            msg.contains("模型返回格式异常") -> str(R.string.yijian__err_bad_format)
+            e is org.json.JSONException -> str(R.string.yijian__err_bad_format)
             // Never surface a raw exception class name to the user; keep it in the log instead.
             else -> {
                 flogError { "yijian unclassified failure: ${e.javaClass.simpleName}: $detail" }
-                "翻译失败，请重试"
+                str(R.string.yijian__err_generic)
             }
         }
     }
