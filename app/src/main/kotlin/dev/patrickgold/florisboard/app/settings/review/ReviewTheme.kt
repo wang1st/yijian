@@ -45,7 +45,7 @@ private val DuoGreenShade = Color(0xFF46A302)
 internal val DuoBlue = Color(0xFF1CB0F6)
 internal val DuoGold = Color(0xFFFFC800)
 private val DuoBlueShade = Color(0xFF1899D6)
-private val DuoRed = Color(0xFFFF4B4B)
+internal val DuoRed = Color(0xFFFF4B4B)
 private val DuoRedShade = Color(0xFFD33131)
 
 @Composable
@@ -53,7 +53,7 @@ internal fun duoCardBg(): Color =
     if (isSystemInDarkTheme()) Color(0xFF1F2023) else Color.White
 
 @Composable
-private fun duoBorder(): Color =
+internal fun duoBorder(): Color =
     if (isSystemInDarkTheme()) Color(0xFF33353A) else Color(0xFFE5E5E5)
 
 /** A border dark enough to read as an interactive control, not as a divider. */
