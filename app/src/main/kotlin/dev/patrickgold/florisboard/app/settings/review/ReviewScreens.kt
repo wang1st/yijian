@@ -258,6 +258,8 @@ fun ReviewHomeScreen() {
                     LinearProgressIndicator(
                         progress = { done.toFloat() / goal },
                         color = DuoGreen,
+                        // The default stop indicator draws a stray dot at the track's end.
+                        drawStopIndicator = {},
                         trackColor = duoBorder(),
                         modifier = Modifier
                             .fillMaxWidth()
@@ -534,6 +536,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.sessionContent(
         LinearProgressIndicator(
             progress = { (index + if (phase == Phase.GRADED) 1 else 0) / total.toFloat() },
             color = DuoGreen,
+            drawStopIndicator = {},
             trackColor = duoBorder(),
             modifier = Modifier
                 .weight(1f)

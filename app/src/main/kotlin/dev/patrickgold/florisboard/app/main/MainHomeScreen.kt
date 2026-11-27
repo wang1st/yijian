@@ -194,7 +194,11 @@ fun MainHomeScreen() {
                         text = when {
                             done >= DAILY_TARGET -> "今日目标已完成 🎉"
                             pending == 0 -> "卡片都练完了，明天继续"
-                            else -> "再练 ${pending.coerceAtMost(DAILY_TARGET - done)} 张完成今日目标"
+                            else -> {
+                                val toGoal = (DAILY_TARGET - done).coerceAtLeast(0)
+                                val thisSession = pending.coerceAtMost(toGoal)
+                                "还有 $pending 张待练 · 再练 $thisSession 张达成今日目标"
+                            }
                         },
                         fontSize = 14.sp,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
