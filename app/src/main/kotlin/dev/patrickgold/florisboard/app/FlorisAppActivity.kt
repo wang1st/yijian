@@ -100,12 +100,6 @@ class FlorisAppActivity : ComponentActivity() {
     private var resourcesContext by mutableStateOf(this as Context)
     private var intentToBeHandled by mutableStateOf<Intent?>(null)
 
-    /**
-     * True when the app was opened through the separate "译键复习" launcher alias rather than
-     * the settings icon, so the review page becomes the start destination.
-     */
-    private var launchedFromReviewAlias by mutableStateOf(false)
-
     override fun onCreate(savedInstanceState: Bundle?) {
         // Splash screen should be installed before calling super.onCreate()
         installSplashScreen().apply {
@@ -113,8 +107,6 @@ class FlorisAppActivity : ComponentActivity() {
         }
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
-
-        launchedFromReviewAlias = isReviewAliasLaunch(intent)
 
         prefs.other.settingsTheme.asFlow().collectIn(lifecycleScope) {
             appTheme = it
@@ -161,11 +153,6 @@ class FlorisAppActivity : ComponentActivity() {
         }
     }
 
-    /** The review alias forwards its own component name as the launch target. */
-    private fun isReviewAliasLaunch(intent: Intent?): Boolean =
-        intent?.component?.className?.endsWith("ReviewLauncherAlias") == true ||
-            intent?.component?.className?.endsWith("review.MainActivity") == true
-
     private fun requestMicPermissionIfNeeded() {
         val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
             PackageManager.PERMISSION_GRANTED
@@ -196,8 +183,6 @@ class FlorisAppActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        launchedFromReviewAlias = isReviewAliasLaunch(intent)
-
         if (intent.action == Intent.ACTION_VIEW && intent.categories?.contains(Intent.CATEGORY_BROWSABLE) == true) {
             intentToBeHandled = intent
             return
@@ -247,11 +232,7 @@ class FlorisAppActivity : ComponentActivity() {
                     Routes.AppNavHost(
                         modifier = Modifier.weight(1.0f),
                         navController = navController,
-                        startDestination = when {
-                            launchedFromReviewAlias -> Routes.Settings.Review::class
-                            isImeSetUp -> Routes.Settings.Home::class
-                            else -> Routes.Setup.Screen::class
-                        },
+                        startDestination = if (isImeSetUp) Routes.Settings.Home::class else Routes.Setup.Screen::class,
                     )
                     PreviewKeyboardField(previewFieldController)
                 }

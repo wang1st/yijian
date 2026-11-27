@@ -16,6 +16,14 @@
 
 package dev.patrickgold.florisboard.app.settings
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Assignment
 import androidx.compose.material.icons.filled.Gesture
@@ -27,12 +35,17 @@ import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.Palette
-import androidx.compose.material.icons.outlined.School
 import androidx.compose.material.icons.outlined.Translate
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.patrickgold.florisboard.R
 import dev.patrickgold.florisboard.app.LocalNavController
 import dev.patrickgold.florisboard.app.Routes
@@ -70,6 +83,45 @@ fun HomeScreen() {
                     text = stringRes(R.string.settings__home__ime_not_selected),
                     onClick = { InputMethodUtils.showImePicker(context) },
                 )
+            }
+
+            // yijian: the review flow is a separate destination of its own, so it gets a
+            // prominent card above the settings groups rather than a row inside them.
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp)
+                    .clickable { navController.navigate(Routes.Settings.Review) },
+            ) {
+                Row(
+                    modifier = Modifier.padding(20.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("🔥", fontSize = 32.sp)
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "复习与练习",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            text = "记忆卡片 · 间隔复习 · 点词拼句",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f),
+                        )
+                    }
+                    Text(
+                        text = "开始 ›",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
             }
 
             SegmentedListColumn {
@@ -129,20 +181,14 @@ fun HomeScreen() {
             }
 
             SegmentedListColumn {
-                val count = 2
+                val count = 1
                 Preference(
                     shapes = ListItemDefaults.segmentedShapes(0, count),
                     icon = Icons.Outlined.Translate,
                     title = stringRes(R.string.settings__translation__title),
                     onClick = { navController.navigate(Routes.Settings.Translation) },
                 )
-                Preference(
-                    shapes = ListItemDefaults.segmentedShapes(1, count),
-                    icon = Icons.Outlined.School,
-                    title = "复习与练习",
-                    summary = "记忆卡片 · 间隔复习 · 点词拼句",
-                    onClick = { navController.navigate(Routes.Settings.Review) },
-                )            }
+            }
 
             SegmentedListColumn {
                 val count = 2

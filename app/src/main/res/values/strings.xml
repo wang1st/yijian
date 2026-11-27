@@ -1157,9 +1157,6 @@
     <string name="pref__translation__base_url__label">API 地址</string>
     <string name="pref__translation__model__label">模型</string>
 
-    <!-- yijian review launcher entry -->
-    <string name="review_app_name">译键复习</string>
-
     <!-- yijian translation panel -->    <string name="yijian__voice_recording">🎤 正在录音…（松开结束）</string>
     <string name="yijian__translating">正在翻译…</string>
     <string name="yijian__translating_short">翻译中…</string>
