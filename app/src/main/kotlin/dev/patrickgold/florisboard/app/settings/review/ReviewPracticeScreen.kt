@@ -344,7 +344,7 @@ private fun PromptCard(state: SessionState) {
 
 /** Word tiles or a text field, depending on how the learner wants to answer. */
 @Composable
-private fun AnswerArea(
+private fun androidx.compose.foundation.layout.ColumnScope.AnswerArea(
     session: PracticeSession,
     state: SessionState,
     card: ReviewCard,
