@@ -42,13 +42,37 @@ import androidx.compose.ui.unit.sp
 
 // ---- Duolingo-inspired palette ------------------------------------------------------
 
-internal val DuoGreen = Color(0xFF58CC02)
-private val DuoGreenShade = Color(0xFF46A302)
-internal val DuoBlue = Color(0xFF1CB0F6)
-internal val DuoGold = Color(0xFFFFC800)
-private val DuoBlueShade = Color(0xFF1899D6)
-internal val DuoRed = Color(0xFFFF4B4B)
-private val DuoRedShade = Color(0xFFD33131)
+/**
+ * Semantic palette, taken from Duolingo's live colour tokens rather than eyeballed.
+ *
+ * Names follow their convention (animals) so the intent survives: a colour is chosen by
+ * meaning — correct, wrong, progress, neutral — never by what it happens to look like.
+ */
+internal val DuoGreen = Color(0xFF58CC02)   // owl       — primary, progress, correct button
+internal val DuoGreenShade = Color(0xFF58A700) // tree-frog — green lip, correct heading text
+internal val DuoBlue = Color(0xFF1CB0F6)    // macaw     — neutral forward action, audio
+internal val DuoGold = Color(0xFFFFC800)    // bee       — skipped / warning
+internal val DuoBlueShade = Color(0xFF1899D6)  // whale  — blue lip, selected text
+internal val DuoRed = Color(0xFFFF4B4B)     // cardinal  — wrong button face
+internal val DuoRedShade = Color(0xFFEA2B2B)   // fire-ant — red lip, error text
+
+// Surfaces for answer states.
+internal val DuoSeaSponge = Color(0xFFD7FFB8)  // correct fill
+internal val DuoTurtle = Color(0xFFA5ED6E)     // correct border/lip
+internal val DuoWalkingFish = Color(0xFFFFDFE0) // wrong fill
+internal val DuoIguana = Color(0xFFDDF4FF)     // selected fill
+internal val DuoBlueJay = Color(0xFF84D8FF)    // selected border/lip
+internal val DuoSwan = Color(0xFFE5E5E5)       // neutral border, disabled, used chip
+internal val DuoHare = Color(0xFFAFAFAF)       // disabled label, secondary text
+internal val DuoEel = Color(0xFF4B4B4B)        // answer text
+internal val DuoInk = Color(0xFF3C3C3C)        // prompt text
+internal val DuoBeeSkipped = Color(0xFFFFF5D3) // skipped panel fill
+internal val DuoFox = Color(0xFFFF9600)        // mistakes-review chip
+internal val DuoGuineaPig = Color(0xFFCD7900)  // skipped heading
+
+/** 2 dp lip under every answer surface; 4 dp under the primary button. */
+internal val CardLip = 2.dp
+internal val ButtonLip = 4.dp
 
 @Composable
 internal fun duoCardBg(): Color =

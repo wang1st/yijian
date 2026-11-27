@@ -16,9 +16,7 @@
 
 package dev.patrickgold.florisboard.app.settings.review
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,14 +35,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -58,20 +51,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.patrickgold.florisboard.app.components.FlorisScreenNg
-import dev.patrickgold.florisboard.ime.translation.review.DiffResult
 import dev.patrickgold.florisboard.ime.translation.review.Grade
 import dev.patrickgold.florisboard.ime.translation.review.ReviewAi
 import dev.patrickgold.florisboard.ime.translation.review.ReviewCard
 import dev.patrickgold.florisboard.ime.translation.review.ReviewStore
-import dev.patrickgold.florisboard.ime.translation.review.WordDiff
 import kotlinx.coroutines.launch
 
 /**
@@ -184,26 +172,15 @@ private fun androidx.compose.foundation.layout.ColumnScope.SessionBody(
     onCheck: (String) -> Unit,
     onGrade: (Grade) -> Unit,
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        LinearProgressIndicator(
-            progress = { (state.index + if (state.phase == SessionPhase.GRADED) 1 else 0) / state.total.toFloat() },
-            color = DuoGreen,
-            trackColor = duoBorder(),
-            drawStopIndicator = {},
-            modifier = Modifier.weight(1f).height(10.dp).clip(RoundedCornerShape(5.dp)),
-        )
-        Spacer(modifier = Modifier.width(12.dp))
-        Text(
-            text = "${state.index + 1}/${state.total}",
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Bold,
-            color = duoTextMuted(),
-        )
-    }
-    Spacer(modifier = Modifier.height(18.dp))
+    // 32 dp top bar: progress pill + counter. No title chrome, one decision per screen.
+    LessonProgressBar(
+        progress = (state.index + if (state.phase == SessionPhase.GRADED) 1 else 0) / state.total.toFloat(),
+        label = "${state.index + 1}/${state.total}",
+    )
+    Spacer(modifier = Modifier.height(24.dp))
 
     // Choice questions render options instead of an assembly area; computed once up here so
-    // both the scroll content and the sticky bottom bar can branch on it.
+    // both the scroll content and the bottom action can branch on it.
     val choices = state.aiExercise?.choices?.map { PickedChoice(it.first, it.second) }
         ?: state.exercise?.choices?.map { PickedChoice(it.text, it.correct) }
         ?: emptyList()
@@ -218,23 +195,36 @@ private fun androidx.compose.foundation.layout.ColumnScope.SessionBody(
                 why = mistakes.first().why,
                 extra = mistakes.size - 1,
             )
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(14.dp))
         }
 
         PromptCard(state = state)
+        Spacer(modifier = Modifier.height(14.dp))
 
         if (choices.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(14.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            // 56 dp rows, 8 dp apart, 12 dp radius, "2 + 2" border and lip.
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 choices.forEachIndexed { i, choice ->
-                    val cs = when {
-                        state.phase != SessionPhase.GRADED -> ChoiceState.IDLE
-                        choice.correct -> ChoiceState.CORRECT
-                        state.picked?.text == choice.text -> ChoiceState.WRONG
-                        else -> ChoiceState.IDLE
+                    val surface = when {
+                        state.phase != SessionPhase.GRADED -> SurfaceState.Neutral
+                        choice.correct -> SurfaceState.Correct
+                        state.picked?.text == choice.text -> SurfaceState.Wrong
+                        else -> SurfaceState.Done
                     }
-                    ChoiceRow(text = "${i + 1}.  ${choice.text}", state = cs) {
-                        session.pick(choice)
+                    AnswerSurface(
+                        state = surface,
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        onClick = if (state.phase == SessionPhase.QUESTION) {
+                            { session.pick(choice) }
+                        } else null,
+                        verticalPadding = 0.dp,
+                    ) {
+                        Text(
+                            text = "${i + 1}.  ${choice.text}",
+                            fontSize = 19.sp,
+                            lineHeight = 25.sp,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
                     }
                 }
             }
@@ -243,12 +233,11 @@ private fun androidx.compose.foundation.layout.ColumnScope.SessionBody(
                 Text(
                     text = "点上面任一选项作答",
                     fontSize = 12.sp,
-                    color = duoTextMuted(),
+                    color = DuoHare,
                     modifier = Modifier.align(Alignment.CenterHorizontally),
                 )
             }
         } else {
-            Spacer(modifier = Modifier.height(14.dp))
             AnswerArea(
                 session = session,
                 state = state,
@@ -259,18 +248,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.SessionBody(
             )
         }
 
-        if (state.canAdvance) {
-            Spacer(modifier = Modifier.height(12.dp))
-            GradeFeedback(
-                diff = state.diff,
-                card = card,
-                aiComment = state.aiComment,
-                aiChecking = state.aiChecking,
-                wasCorrect = state.picked?.correct == true,
-            )
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(14.dp))
         ExerciseDetail(
             card = card,
             expanded = state.detailOpen,
@@ -280,36 +258,39 @@ private fun androidx.compose.foundation.layout.ColumnScope.SessionBody(
         )
     }
 
-    Spacer(modifier = Modifier.height(10.dp))
+    Spacer(modifier = Modifier.height(24.dp))
+
+    // One action per state: CHECK (disabled until an answer exists) then CONTINUE.
+    // Grading is automatic — the self-assessment row is gone, the diff decides.
     if (state.phase == SessionPhase.QUESTION && choices.isEmpty()) {
         val canCheck = if (state.inputMode == InputMode.TILES) {
             tiles?.isComplete == true
         } else {
             state.typed.isNotBlank()
         }
-        DuoButton(
+        LessonButton(
             text = "检查",
-            onClick = { onCheck(if (state.inputMode == InputMode.TILES) tiles?.answer() ?: "" else state.typed) },
             enabled = canCheck,
-            modifier = Modifier.fillMaxWidth(),
+            onClick = { onCheck(if (state.inputMode == InputMode.TILES) tiles?.answer() ?: "" else state.typed) },
         )
     } else if (state.canAdvance) {
-        DuoButton(
+        // Feedback lives in the panel below the action; the button keeps the verdict colour.
+        val correct = state.diff?.let { it.similarity >= 60 } ?: (state.picked?.correct == true)
+        LessonButton(
             text = "继续",
-            onClick = { onGrade(session.suggestedGrade()) },
-            modifier = Modifier.fillMaxWidth(),
+            enabled = true,
+            tone = if (correct) ActionTone.Correct else ActionTone.Wrong,
+            onClick = { onGrade(session.autoGrade()) },
         )
-        Spacer(modifier = Modifier.height(6.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            DuoSecondaryButton("忘了", onClick = { onGrade(Grade.FORGOT) }, modifier = Modifier.weight(1f))
-            DuoSecondaryButton("模糊", onClick = { onGrade(Grade.HARD) }, modifier = Modifier.weight(1f))
-            DuoSecondaryButton("记得", onClick = { onGrade(Grade.GOOD) }, modifier = Modifier.weight(1f))
-        }
     }
-    Spacer(modifier = Modifier.height(14.dp))
+    Spacer(modifier = Modifier.height(19.dp))
+}
+
+/** Purple marks new material, orange marks error review — same convention as the source. */
+private fun sectionTagColor(type: String): Color = when (type) {
+    "FIX_ERROR" -> DuoGuineaPig
+    "CLOZE" -> Color(0xFFCE82FF)
+    else -> DuoBlue
 }
 
 @Composable
@@ -323,12 +304,7 @@ private fun PromptCard(state: SessionState) {
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = typeHint(state.typeName),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = DuoBlue,
-                )
+                SectionTag(text = typeHint(state.typeName), color = sectionTagColor(state.typeName))
                 if (state.preparing) {
                     Spacer(modifier = Modifier.width(8.dp))
                     CircularProgressIndicator(
@@ -347,8 +323,10 @@ private fun PromptCard(state: SessionState) {
                     text = state.aiExercise?.prompt
                         ?: state.exercise?.prompt
                         ?: state.card?.entry?.translation.orEmpty(),
-                    fontSize = 21.sp,
-                    lineHeight = 30.sp,
+                    fontSize = 28.sp,
+                    lineHeight = 35.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isSystemInDarkTheme()) Color(0xFFEDEDED) else DuoInk,
                 )
             }
         }
@@ -383,7 +361,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.AnswerArea(
                 ) {
                     key(version) {
                         tiles.placed.forEachIndexed { pos, source ->
-                            WordChip(text = tiles.tiles[source]) {
+                            PlacedWordTile(text = tiles.tiles[source]) {
                                 if (state.phase == SessionPhase.QUESTION) {
                                     tiles.placed.removeAt(pos)
                                     onTilesChanged()
@@ -403,7 +381,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.AnswerArea(
                 key(version) {
                     tiles.tiles.forEachIndexed { source, tile ->
                         if (source !in tiles.placed) {
-                            WordChip(text = tile) {
+                            WordTile(text = tile) {
                                 tiles.placed.add(source)
                                 session.markAnswerStarted()
                                 onTilesChanged()
@@ -456,96 +434,6 @@ private fun androidx.compose.foundation.layout.ColumnScope.AnswerArea(
     }
 }
 
-/** A tappable word tile. Width hugs the word so the bank flows across the line. */
-@Composable
-private fun WordChip(text: String, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .height(48.dp)
-            .padding(bottom = 3.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(duoBorder())
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.TopCenter,
-    ) {
-        Box(
-            modifier = Modifier
-                .height(45.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(duoCardBg())
-                .padding(horizontal = 14.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(text = text, fontSize = 17.sp, fontWeight = FontWeight.Medium)
-        }
-    }
-}
-
-/** Green/red feedback panel shown after answering. */
-@Composable
-private fun GradeFeedback(
-    diff: DiffResult?,
-    card: ReviewCard,
-    aiComment: String? = null,
-    aiChecking: Boolean = false,
-    wasCorrect: Boolean = false,
-) {
-    val perfect = if (diff != null) diff.similarity >= 90 else wasCorrect
-    val accent = if (perfect) DuoGreen else DuoRed
-    val bg = accent.copy(alpha = if (isSystemInDarkTheme()) 0.14f else 0.09f)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(bg)
-            .padding(16.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = accent, modifier = Modifier.size(22.dp))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = when {
-                    perfect -> "太棒了！"
-                    diff != null && diff.similarity >= 60 -> "接近了，注意细节"
-                    else -> "再练一次会更好"
-                },
-                fontSize = 17.sp,
-                fontWeight = FontWeight.Bold,
-                color = accent,
-            )
-            Spacer(modifier = Modifier.weight(1f))
-            if (diff != null) {
-                Text("${diff.similarity}%", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = accent)
-            }
-        }
-        Spacer(modifier = Modifier.height(10.dp))
-        if (diff != null) {
-            val annotated: AnnotatedString = buildAnnotatedString {
-                diff.targetWords.forEachIndexed { i, w ->
-                    if (i > 0) append(" ")
-                    withStyle(
-                        SpanStyle(
-                            color = if (w.matched) MaterialTheme.colorScheme.onSurface else DuoRed,
-                            fontWeight = if (w.matched) FontWeight.Normal else FontWeight.Bold,
-                        )
-                    ) { append(w.text) }
-                }
-            }
-            Text(text = annotated, fontSize = 17.sp, lineHeight = 25.sp)
-        }
-        if (aiChecking) {
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(color = DuoBlue, strokeWidth = 2.dp, modifier = Modifier.size(14.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("AI 正在判分…", fontSize = 12.sp, color = duoTextMuted())
-            }
-        } else if (aiComment != null) {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(aiComment, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = DuoBlue)
-        }
-    }
-}
 
 @Composable
 private fun SessionEmptyState() {

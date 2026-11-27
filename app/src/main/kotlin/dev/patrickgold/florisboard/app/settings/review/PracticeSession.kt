@@ -225,8 +225,26 @@ class PracticeSession(private val host: SessionHost) {
         prepare(state.queue[nextIndex])
     }
 
-    /** The grade the UI should propose, based on how the answer landed. */
-    fun suggestedGrade(): Grade =
-        state.diff?.suggestedGrade
-            ?: if (state.picked?.correct == true) Grade.GOOD else Grade.FORGOT
+    /**
+     * The grade to commit, decided entirely by the answer.
+     *
+     * The self-assessment row (忘了/模糊/记得) is gone: the diff already knows, and asking the
+     * learner to rate themselves after every question was a second decision on a screen that
+     * should have exactly one. A near-miss (>=60%) still counts as remembered — it means the
+     * sentence came back, with a slip.
+     */
+    fun autoGrade(): Grade {
+        val diff = state.diff
+        if (diff != null) {
+            return when {
+                diff.similarity >= 60 -> Grade.GOOD
+                diff.similarity >= 35 -> Grade.HARD
+                else -> Grade.FORGOT
+            }
+        }
+        return if (state.picked?.correct == true) Grade.GOOD else Grade.FORGOT
+    }
+
+    /** Kept for callers that want the raw suggestion without committing. */
+    fun suggestedGrade(): Grade = autoGrade()
 }
