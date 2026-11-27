@@ -189,6 +189,12 @@ private fun androidx.compose.foundation.layout.ColumnScope.SessionBody(
     }
     Spacer(modifier = Modifier.height(18.dp))
 
+    // Choice questions render options instead of an assembly area; computed once up here so
+    // both the scroll content and the sticky bottom bar can branch on it.
+    val choices = state.aiExercise?.choices?.map { PickedChoice(it.first, it.second) }
+        ?: state.exercise?.choices?.map { PickedChoice(it.text, it.correct) }
+        ?: emptyList()
+
     Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
         // The error this card exists to drill, named before the question.
         val mistakes = card.entry.corrections
@@ -203,10 +209,6 @@ private fun androidx.compose.foundation.layout.ColumnScope.SessionBody(
         }
 
         PromptCard(state = state)
-
-        val choices = state.aiExercise?.choices?.map { PickedChoice(it.first, it.second) }
-            ?: state.exercise?.choices?.map { PickedChoice(it.text, it.correct) }
-            ?: emptyList()
 
         if (choices.isNotEmpty()) {
             Spacer(modifier = Modifier.height(14.dp))
