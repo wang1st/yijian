@@ -370,7 +370,7 @@ private fun AnswerArea(
                 ) {
                     key(version) {
                         tiles.placed.forEachIndexed { pos, source ->
-                            WordChip(text = tiles.tiles[source].text) {
+                            WordChip(text = tiles.tiles[source]) {
                                 if (state.phase == SessionPhase.QUESTION) {
                                     tiles.placed.removeAt(pos)
                                     onTilesChanged()
