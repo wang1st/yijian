@@ -37,7 +37,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.School
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.StarOutline
 import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
@@ -50,6 +49,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
@@ -75,13 +75,19 @@ enum class MainTab(
 ) {
     HOME("译键", Icons.Outlined.Translate, Color(0xFF58CC02), Color(0xFF46A302)),
     REVIEW("复习", Icons.Outlined.School, Color(0xFF1CB0F6), Color(0xFF1899D6)),
-    STATS("学习报告", Icons.Outlined.StarOutline, Color(0xFFFFC800), Color(0xFFE7A601)),
+    STATS("学习报告", YijianIcons.BarChart, Color(0xFFFFC800), Color(0xFFE7A601)),
     SETTINGS("设置", Icons.Outlined.Settings, Color(0xFFCE82FF), Color(0xFFA568CC)),
     ;
 
-    /** Fill used when the tab is not selected — desaturated but still recognisable. */
+    /**
+     * Fill used when the tab is not selected.
+     *
+     * Duolingo keeps every tab coloured and only outlines the active one; a grey row loses the
+     * per-destination cue. Desaturating instead keeps the colour while making the active tab
+     * unambiguous.
+     */
     val idle: Color
-        get() = Color(0xFF7C7C7C)
+        get() = lerp(color, Color(0xFFB0B0B0), 0.42f)
 }
 
 /** True when [destination] belongs to [tab]'s top-level page. */
