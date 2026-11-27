@@ -12,8 +12,10 @@
     <color name="colorError">#B00020</color><!-- Red 1000? -->
     <color name="textColorError">#FFFFFF</color><!-- White -->
 
-    <!-- Duolingo-style saturated green; the white keycap reads clearly on it. -->
-    <color name="ic_app_icon_background">#58CC02</color>
+    <!-- Saturated blue behind the pigeon. The bird is pale blue-grey, so a green
+         field fought it; this is the deeper end of the same family, and gives the
+         white eye highlight and orange beak enough separation. -->
+    <color name="ic_app_icon_background">#1B6FC0</color>
 
     <color name="cardViewBackgroundColor">#FFFFFF</color><!-- White -->
     <color name="navigationBarColor">#000000</color><!-- Black -->

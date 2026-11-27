@@ -25,6 +25,10 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import dev.patrickgold.florisboard.R
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -153,16 +157,32 @@ fun SessionCelebration(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
+            // 咕咕 takes the trophy's place: the mascot celebrating with you reads warmer
+            // than a generic cup, and it can express the result — wings up when every card
+            // came back, calm and friendly otherwise.
+            val allCorrect = total > 0 && good == total
             Box(contentAlignment = Alignment.Center) {
-                Canvas(modifier = Modifier.size(160.dp)) {
+                Canvas(modifier = Modifier.size(200.dp)) {
                     drawCircle(
-                        color = DuoGold.copy(alpha = 0.12f),
+                        color = DuoBlue.copy(alpha = 0.14f),
                         radius = (size.minDimension / 2f) * glowScale,
                     )
                 }
-                Text(
-                    text = "🏆",
-                    fontSize = (72 * pop.value.coerceIn(0f, 1.2f)).sp,
+                Image(
+                    painter = painterResource(
+                        if (allCorrect) R.drawable.ic_gugu_happy else R.drawable.ic_gugu_front
+                    ),
+                    contentDescription = "咕咕",
+                    modifier = Modifier
+                        .size(150.dp)
+                        .graphicsLayer {
+                            scaleX = pop.value.coerceIn(0f, 1.2f)
+                            scaleY = pop.value.coerceIn(0f, 1.2f)
+                            // A slow breathing bob once it has landed.
+                            translationY = if (pop.value >= 1f) {
+                                kotlin.math.sin(glowScale * 3f) * 3.dp.toPx()
+                            } else 0f
+                        },
                 )
             }
             Spacer(modifier = Modifier.height(20.dp))

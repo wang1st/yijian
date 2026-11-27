@@ -1,83 +1,48 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  译键 Yijian app icon.
+  译键 app icon: 咕咕 the carrier pigeon, in profile.
 
-  Modelled on Duolingo's icon language: one bold silhouette, a saturated flat
-  background, a thick friendly outline, and nothing that disappears at 48dp.
-  A key is what the app is; "A → 中" is what it does.
-
-  Drawn on the 108x108 adaptive-icon grid with the content kept inside the
-  centre 72x72 safe zone.
+  Generated from docs/mascot/gugu-profile.svg by scaling it into the adaptive-icon
+  safe zone. The pigeon's bounding box is 55x51 on the 64 grid, centred at
+  (32.5, 32.5); scaling by 1.05 and re-centring puts it at the optical size of a
+  launcher icon. The silhouette is rounded, so its corners sit inside the 36 dp
+  safe circle even though the bounding-box diagonal would suggest otherwise —
+  verified by rendering inside a circular mask.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-
-    <!-- Scaled to 0.84 so the rotated keycap's corners stay inside the 36dp adaptive
-         safe circle (measured: 33.1dp); otherwise round masks clip the corners. -->
+    <!-- bbox centre (32.5,32.5) -> icon centre (54,54), scaled 0.78 -->
     <group
-        android:scaleX="0.84"
-        android:scaleY="0.84"
-        android:pivotX="54"
-        android:pivotY="54">
+        android:scaleX="1.05"
+        android:scaleY="1.05"
+        android:pivotX="32.5"
+        android:pivotY="32.5"
+        android:translateX="19.9"
+        android:translateY="19.9">
 
-    <group
-        android:pivotX="54"
-        android:pivotY="54"
-        android:rotation="-8">
-
-        <!-- Pressed edge: offset slab so the key looks physical -->
+        <!-- 向左上翘的短尾 -->
         <path
-            android:pathData="M33,36 h42 a11,11 0 0 1 11,11 v24 a11,11 0 0 1 -11,11 h-42 a11,11 0 0 1 -11,-11 v-24 a11,11 0 0 1 11,-11 z"
-            android:fillColor="#3E8F00" />
-
-        <!-- Keycap face -->
+            android:fillColor="#7A93B8"
+            android:pathData="M26 47 C18 46 11 42 6 35 Q4.5 33.4 5 36 C6.3 45.2 11.4 52.7 20 55 Q23 55.8 26 55 Z" />
+        <!-- 后颈内收、前胸挺出的侧面轮廓 -->
         <path
-            android:pathData="M33,31 h42 a11,11 0 0 1 11,11 v24 a11,11 0 0 1 -11,11 h-42 a11,11 0 0 1 -11,-11 v-24 a11,11 0 0 1 11,-11 z"
-            android:fillColor="#FFFFFF" />
-
-        <!-- A -->
+            android:fillColor="#8AA4C8"
+            android:pathData="M24 22 C24.4 12.5 30.7 6.6 39.1 7 C47.5 7.3 52.7 13.5 52.8 21.4 C52.8 25.5 51.2 28 49.2 30 Q47.2 32 48.5 34.8 C50.8 40.7 48.9 47.7 43.3 52.6 C36.8 58.3 25.2 58.8 15.4 54.9 C12.5 53.6 12.2 51.1 14.2 47.5 C17.5 41.7 21.1 37.7 25.3 33.1 Q27.8 30.4 25.9 27.9 Q23.7 25 24 22 Z" />
+        <!-- 朝右探出的小喙 -->
         <path
-            android:pathData="M36,62 L42.6,44 L49.2,62"
-            android:strokeColor="#1C2B43"
-            android:strokeWidth="5.6"
-            android:strokeLineCap="round"
-            android:strokeLineJoin="round" />
+            android:fillColor="#FF9600"
+            android:pathData="M51.7 20.3 Q55.1 20.2 60.2 23.9 Q61.3 24.8 60 25.1 L51.2 26.8 Q49.9 23.6 51.7 20.3 Z" />
+        <!-- 一只竖椭圆眼 -->
         <path
-            android:pathData="M38.9,55.4 h7.4"
-            android:strokeColor="#1C2B43"
-            android:strokeWidth="5"
-            android:strokeLineCap="round" />
-
-        <!-- Arrow: the translation step, kept short and bold -->
+            android:fillColor="#1C2B43"
+            android:pathData="M40.2 19.6 a3.4 4.55 0 1 0 6.8 0 a3.4 4.55 0 1 0 -6.8 0 Z" />
+        <!-- 眼睛高光 -->
         <path
-            android:pathData="M53,53 h6.4"
-            android:strokeColor="#58CC02"
-            android:strokeWidth="5.4"
-            android:strokeLineCap="round" />
-        <path
-            android:pathData="M56.6,49.6 l4,3.4 -4,3.4"
-            android:strokeColor="#58CC02"
-            android:strokeWidth="5.4"
-            android:strokeLineCap="round"
-            android:strokeLineJoin="round" />
-
-        <!-- 中 (zhōng): the standard construction — a rectangular mouth (口) with the
-             vertical stroke passing straight through its centre, projecting above and
-             below. Drawn on the same baseline as the A so the pair sits level. -->
-        <path
-            android:pathData="M68.8,48.6 h11.4 v9.2 h-11.4 z"
-            android:strokeColor="#1C2B43"
-            android:strokeWidth="4.2"
-            android:strokeLineCap="round"
-            android:strokeLineJoin="round" />
-        <path
-            android:pathData="M74.5,44.4 v18"
-            android:strokeColor="#1C2B43"
-            android:strokeWidth="4.2"
-            android:strokeLineCap="round" />
-    </group>
+            android:fillColor="#FFFFFF"
+            android:fillAlpha="0.85"
+            android:pathData="M41.39 17.95 a1.16 1.16 0 1 0 2.32 0 a1.16 1.16 0 1 0 -2.32 0 Z" />
     </group>
 </vector>
