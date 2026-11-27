@@ -9,4 +9,12 @@
     <include
         domain="database"
         path="floris_user_dictionary"/>
+    <!-- yijian: the practice log and review schedule are the user's own learning record and
+         cannot be regenerated, so they must survive a device restore. -->
+    <include
+        domain="file"
+        path="yijian_practice.jsonl"/>
+    <include
+        domain="file"
+        path="yijian_srs.json"/>
 </full-backup-content>

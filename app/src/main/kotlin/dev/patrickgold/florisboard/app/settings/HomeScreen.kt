@@ -16,6 +16,8 @@
 
 package dev.patrickgold.florisboard.app.settings
 
+import android.widget.Toast
+
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Assignment
 import androidx.compose.material.icons.filled.Gesture
@@ -27,6 +29,7 @@ import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.SaveAlt
 import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.runtime.Composable
@@ -38,6 +41,7 @@ import dev.patrickgold.florisboard.app.Routes
 import dev.patrickgold.florisboard.app.components.ScrollableScreenColumn
 import dev.patrickgold.florisboard.app.components.SegmentedListColumn
 import dev.patrickgold.florisboard.app.components.FlorisScreenNg
+import dev.patrickgold.florisboard.ime.translation.PracticeExporter
 import dev.patrickgold.florisboard.lib.util.InputMethodUtils
 import dev.patrickgold.jetpref.datastore.ui.Preference
 import org.florisboard.lib.compose.FlorisErrorCard
@@ -141,7 +145,7 @@ fun HomeScreen() {
             }
 
             SegmentedListColumn {
-                val count = 2
+                val count = 3
                 Preference(
                     shapes = ListItemDefaults.segmentedShapes(0, count),
                     icon = Icons.Outlined.Build,
@@ -150,6 +154,16 @@ fun HomeScreen() {
                 )
                 Preference(
                     shapes = ListItemDefaults.segmentedShapes(1, count),
+                    icon = Icons.Outlined.SaveAlt,
+                    title = "导出学习数据",
+                    summary = "把练习记录存成 JSON，可存云盘或发给别处",
+                    onClick = {
+                        val result = PracticeExporter.export()
+                        Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
+                    },
+                )
+                Preference(
+                    shapes = ListItemDefaults.segmentedShapes(2, count),
                     icon = Icons.Outlined.Info,
                     title = stringRes(R.string.about__title),
                     onClick = { navController.navigate(Routes.Settings.About) },

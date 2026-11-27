@@ -250,10 +250,10 @@ class EnglishTeacher {
                     // are not lost.
                     val reported = entries.map { it.timestamp }.toSet()
                     val remaining = readEntries().filterNot { it.timestamp in reported }
-                    storeFile.writeText("")
-                    if (remaining.isNotEmpty()) {
-                        remaining.forEach { storeFile.appendText(it.toJson().toString() + "\n") }
-                    }
+                    // Never truncate-then-rewrite: an interrupted write (process death, full
+                    // disk) would leave an empty file and lose the whole practice history.
+                    // Write the survivors to a temp file first, then swap it in.
+                    storeFile.atomicRewrite(remaining.joinToString("") { it.toJson().toString() + "\n" })
                     pendingWordCount.value = remaining.sumOf { it.wordCount }
                 }
                 reportStatus.value = "报告已发送（${entries.size} 句 / $words 词）"
@@ -331,5 +331,22 @@ class EnglishTeacher {
         }
     }
 
+/**
+ * Replaces the file's contents without ever leaving it empty.
+ *
+ * Writes the full new content to a sibling temp file, flushes it, then renames it over the
+ * original — a rename on the same filesystem is atomic, so a crash mid-write leaves either the
+ * old file or the new one, never a truncated one.
+ */
+internal fun File.atomicRewrite(content: String) {
+    val dir = parentFile ?: return
+    val tmp = File(dir, "${name}.tmp")
+    tmp.writeText(content)
+    if (!tmp.renameTo(this)) {
+        // Rename can fail across some mount types; fall back but keep the temp copy as a backup.
+        writeText(content)
+        tmp.delete()
+    }
+}
 
 }
