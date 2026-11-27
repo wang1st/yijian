@@ -390,7 +390,7 @@ private fun AnswerArea(
                 key(version) {
                     tiles.tiles.forEachIndexed { source, tile ->
                         if (source !in tiles.placed) {
-                            WordChip(text = tile.text) {
+                            WordChip(text = tile) {
                                 tiles.placed.add(source)
                                 session.markAnswerStarted()
                                 onTilesChanged()
