@@ -116,6 +116,23 @@
             </intent-filter>
         </activity-alias>
 
+        <!-- Separate launcher entry that opens straight into the review page. The activity
+             detects the alias through the launch intent's component name. -->
+        <activity-alias
+            android:name="dev.patrickgold.florisboard.ReviewLauncherAlias"
+            android:icon="@mipmap/floris_app_icon"
+            android:label="@string/review_app_name"
+            android:launchMode="singleTask"
+            android:roundIcon="@mipmap/floris_app_icon_round"
+            android:targetActivity="dev.patrickgold.florisboard.app.FlorisAppActivity"
+            android:theme="@style/FlorisAppTheme.Splash"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
         <!-- Crash Dialog Activity -->
         <activity
             android:name="dev.patrickgold.florisboard.lib.crashutility.CrashDialogActivity"

@@ -140,10 +140,9 @@ fun HomeScreen() {
                     shapes = ListItemDefaults.segmentedShapes(1, count),
                     icon = Icons.Outlined.School,
                     title = "复习与练习",
-                    summary = "把翻译过的句子变成记忆卡片",
+                    summary = "记忆卡片 · 间隔复习 · 点词拼句",
                     onClick = { navController.navigate(Routes.Settings.Review) },
-                )
-            }
+                )            }
 
             SegmentedListColumn {
                 val count = 2
