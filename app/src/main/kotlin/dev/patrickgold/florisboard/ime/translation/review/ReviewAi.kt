@@ -279,8 +279,10 @@ object ReviewAi {
         // A spelling slip is an input problem: drill the word. A grammar slip is a pattern
         // problem: drill the pattern on another sentence, not the same one again.
         val focusRule = when (mistakeTag) {
-            "拼写" -> "这道题必须直接考拼写：让学生补全或选出他写错的那个词（$wrongText → $rightText），不要让句子上下文泄答案。"
-            "语法" -> "这道题必须考同一个语法点，但换一个不同场景的句子，让学生把规则用在新句子上，而不是背这一句。"
+            "拼写" -> "这道题必须直接考拼写：挖掉他拼错的词（$rightText），选项里放入 $wrongText 这类拼写相近的错法，" +
+                "让学生靠拼写本身判断，不要让上下文泄露答案。"
+            "语法" -> "这道题必须直接考这个语法选择本身：把学生写错的部分做成必须抉择的一个空，" +
+                "选项里既有他原来用的（$wrongText）也有正确的（$rightText），让他自己选出对的，不要考语义理解。"
             "用词" -> "这道题考搭配：在相近的候选词之间选对的那个，干扰项要是学生常见的中式搭配。"
             "表达" -> "这道题考更地道的说法：给出口语但不够地道的表达，让学生选出母语者会用的版本。"
             // No mistake means the sentence introduced a usable pattern: the job is to
@@ -288,12 +290,15 @@ object ReviewAi {
             else -> "这句学生写得没错。请找出句子里一个**可以举一反三的常用用法或搭配**，" +
                 "把考点放在这个用法上，并让学生在新语境里用一次；tip 里写清这条用法还能用在什么场合。"
         }
-        val allowed = if (isNew || box <= 0) {
-            "CLOZE、MEANING、LISTEN"
-        } else if (box <= 2) {
-            "RECALL、CLOZE、LISTEN、MEANING"
-        } else {
-            "RECALL、FIX_ERROR、LISTEN"
+        // A recorded mistake outranks the card's familiarity: if the point was to fix a
+        // grammar choice, a "what does this mean" question does not drill it at all.
+        val allowed = when {
+            mistakeTag == "拼写" -> "CLOZE"            // fill in / pick the word they misspelled
+            mistakeTag == "语法" || mistakeTag == "用法" -> "FIX_ERROR、CLOZE"  // force the choice
+            mistakeTag == "用词" || mistakeTag == "表达" -> "CLOZE"            // pick the right collocation
+            isNew || box <= 0 -> "CLOZE、MEANING、LISTEN"
+            box <= 2 -> "RECALL、CLOZE、LISTEN、MEANING"
+            else -> "RECALL、FIX_ERROR、LISTEN"
         }
         val system = """你是英语老师，为学生出一道复习题。学生是中文母语者，水平中等偏下。
 可选题型（只允许这几种）：RECALL（看中文写英文）、CLOZE（句中挖一个词，四选一）、
@@ -301,6 +306,7 @@ LISTEN（听英文选正确文本）、FIX_ERROR（句中有一处错误，选�
 
 各题型要求：
 - CLOZE：从原句中挖掉一个**实词**（名词/动词/形容词），用 ____ 代替；给出 4 个选项，干扰项要和原文语境相配、长度相近，让学生必须靠语法或搭配判断，不能一眼排除。
+  干扰项的标准：把它填进空格后，句子要**读起来像对但实际不合适**（时态不符、搭配不对、单复数不符）。禁止使用明显无关的词。
 - LISTEN：把原句作为正确选项，再写 2 个**同主题、长度相近、有细微差别**的干扰句（换时态、换介词、换单复数），不要写明显无关的句子。
 - FIX_ERROR：在原句基础上制造**一个**学生常犯的错误（缺冠词、第三人称单数少 s、时态错、介词错），给出错误版和正确版两个选项。
 - MEANING：中文译文作为正确选项，再写 2 个意思接近但不同的干扰译文。
