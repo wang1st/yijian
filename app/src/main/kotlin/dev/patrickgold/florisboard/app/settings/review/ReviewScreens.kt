@@ -364,19 +364,25 @@ fun ReviewPracticeScreen() {
     // Exercise written by the model, with the point it drills put front and centre.
     var aiExercise by remember { mutableStateOf<ReviewAi.AiExercise?>(null) }
     var preparing by remember { mutableStateOf(false) }
+    var detailOpen by remember { mutableStateOf(false) }
 
     fun startCard(card: ReviewCard) {
         // The model authors the exercise: it knows what a plausible mistake looks like, and
         // it can target the specific error the learner already made on this sentence.
         aiExercise = null
+        detailOpen = false
         preparing = true
         scope.launch {
+            val primary = card.entry.corrections.firstOrNull()
             aiExercise = ReviewAi.makeExercise(
                 english = card.entry.corrected.ifBlank { card.entry.original },
                 chinese = card.entry.translation,
                 box = card.box,
                 isNew = card.isNew,
                 knownMistakes = card.entry.corrections.map { "${it.wrong} → ${it.right}" },
+                mistakeTag = primary?.tag.orEmpty(),
+                wrongText = primary?.wrong.orEmpty(),
+                rightText = primary?.right.orEmpty(),
             )
             preparing = false
         }
@@ -432,6 +438,8 @@ fun ReviewPracticeScreen() {
                         exercise = exercise,
                         aiExercise = aiExercise,
                         preparing = preparing,
+                        detailOpen = detailOpen,
+                        onToggleDetail = { detailOpen = !detailOpen },
                         picked = picked,
                         onPickAiChoice = { choice ->
                             if (phase == Phase.QUESTION) {
@@ -543,6 +551,8 @@ private fun androidx.compose.foundation.layout.ColumnScope.sessionContent(
     exercise: PreparedExercise?,
     aiExercise: ReviewAi.AiExercise?,
     preparing: Boolean,
+    detailOpen: Boolean,
+    onToggleDetail: () -> Unit,
     picked: Choice?,
     onPickChoice: (Choice) -> Unit,
     onPickAiChoice: (Choice) -> Unit,
@@ -751,6 +761,15 @@ private fun androidx.compose.foundation.layout.ColumnScope.sessionContent(
                 }
             }
         }
+
+        Spacer(modifier = Modifier.height(12.dp))
+        ExerciseDetail(
+            card = card,
+            expanded = detailOpen,
+            onToggle = onToggleDetail,
+            usage = aiExercise?.usage.orEmpty(),
+            moreExamples = aiExercise?.moreExamples.orEmpty(),
+        )
 
         // Choice questions have no diff: their result lives in `picked`.
         if (phase == Phase.GRADED && (diff != null || picked != null)) {
@@ -1229,5 +1248,169 @@ internal fun MistakeBanner(wrong: String, right: String, why: String, extra: Int
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
             )
         }
+    }
+}
+
+// ---- exercise detail (source + history) ---------------------------------------------
+
+/**
+ * Everything behind the current question, behind a single "详情" toggle:
+ *
+ * - where the sentence came from (the user's own message, and when)
+ * - what they wrote versus what it should be
+ * - every correction, tagged by kind, with the rule
+ * - how many times this card has been seen and missed
+ *
+ * The point is that answering wrong is not a dead end: the learner can immediately see what
+ * they were trying to say and why it was wrong.
+ */
+@Composable
+internal fun ExerciseDetail(
+    card: ReviewCard,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    /** Model-written generalisation of the pattern, for cards with no recorded mistake. */
+    usage: String = "",
+    moreExamples: List<String> = emptyList(),
+) {
+    val entry = card.entry
+    val dateText = remember(entry.timestamp) {
+        java.text.SimpleDateFormat("M月d日 HH:mm", java.util.Locale.CHINA)
+            .format(java.util.Date(entry.timestamp))
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(duoCardBg()),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onToggle)
+                .padding(horizontal = 14.dp, vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = if (expanded) "题目详情 ▴" else "题目详情 ▾",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = DuoBlue,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = "练过 ${card.reps} 次" + if (card.lapses > 0) " · 忘过 ${card.lapses} 次" else "",
+                fontSize = 10.sp,
+                color = duoTextMuted(),
+            )
+        }
+        if (expanded) {
+            Column(modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp)) {
+                DetailSection("来源") {
+                    Text(
+                        text = "$dateText · 你当时在译键里输入",
+                        fontSize = 11.sp,
+                        color = duoTextMuted(),
+                    )
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Text(
+                        text = "“${entry.original.ifBlank { entry.corrected }}”",
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp,
+                    )
+                }
+                if (entry.original.isNotBlank() && entry.original != entry.corrected) {
+                    DetailSection("地道说法") {
+                        Text(entry.corrected, fontSize = 14.sp, lineHeight = 20.sp, color = DuoGreen)
+                    }
+                }
+                if (entry.translation.isNotBlank()) {
+                    DetailSection("中文") {
+                        Text(entry.translation, fontSize = 14.sp, lineHeight = 20.sp)
+                    }
+                }
+                if (entry.corrections.isNotEmpty()) {
+                    DetailSection("你当时的错误") {
+                        entry.corrections.forEach { c ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                TagChip(c.tag)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "${c.wrong} → ${c.right}",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium,
+                                )
+                            }
+                            if (c.why.isNotBlank()) {
+                                Text(
+                                    text = c.why,
+                                    fontSize = 12.sp,
+                                    lineHeight = 17.sp,
+                                    color = duoTextMuted(),
+                                    modifier = Modifier.padding(start = 2.dp, top = 2.dp, bottom = 4.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+                if (entry.note.isNotBlank()) {
+                    DetailSection("老师点评") {
+                        Text(entry.note, fontSize = 13.sp, lineHeight = 19.sp)
+                    }
+                }
+                // No mistake recorded: the lesson is the pattern, so show how far it reaches.
+                if (usage.isNotBlank() || moreExamples.isNotEmpty()) {
+                    DetailSection("举一反三") {
+                        if (usage.isNotBlank()) {
+                            Text(usage, fontSize = 13.sp, lineHeight = 19.sp)
+                        }
+                        moreExamples.forEach { example ->
+                            Row(modifier = Modifier.padding(top = 4.dp)) {
+                                Text("·", fontSize = 13.sp, color = DuoGreen)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(example, fontSize = 13.sp, lineHeight = 19.sp)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DetailSection(title: String, content: @Composable () -> Unit) {
+    Spacer(modifier = Modifier.height(10.dp))
+    Text(
+        text = title,
+        fontSize = 10.sp,
+        fontWeight = FontWeight.Bold,
+        color = duoTextMuted(),
+    )
+    Spacer(modifier = Modifier.height(3.dp))
+    content()
+}
+
+/** Coloured label for the mistake kind, so the weak point is readable at a glance. */
+@Composable
+private fun TagChip(tag: String) {
+    val color = when (tag) {
+        "拼写" -> DuoRed
+        "语法" -> DuoBlue
+        "用词" -> DuoGold
+        else -> DuoGreen
+    }
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(4.dp))
+            .background(color.copy(alpha = 0.18f))
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    ) {
+        Text(
+            text = tag.ifBlank { "表达" },
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            color = color,
+        )
     }
 }

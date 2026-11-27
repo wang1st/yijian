@@ -248,6 +248,10 @@ object ReviewAi {
         val answer: String,
         /** One line explaining the point being practised. */
         val tip: String,
+        /** Why this point generalises (only for cards with no recorded mistake). */
+        val usage: String = "",
+        /** Two or three other sentences using the same pattern. */
+        val moreExamples: List<String> = emptyList(),
     )
 
     /**
@@ -266,8 +270,24 @@ object ReviewAi {
         box: Int,
         isNew: Boolean,
         knownMistakes: List<String>,
+        /** Correction tag of the mistake this card is about: 拼写 / 语法 / 用词 / 表达. */
+        mistakeTag: String = "",
+        wrongText: String = "",
+        rightText: String = "",
     ): AiExercise? {
         if (!isEnabled()) return null
+        // A spelling slip is an input problem: drill the word. A grammar slip is a pattern
+        // problem: drill the pattern on another sentence, not the same one again.
+        val focusRule = when (mistakeTag) {
+            "拼写" -> "这道题必须直接考拼写：让学生补全或选出他写错的那个词（$wrongText → $rightText），不要让句子上下文泄答案。"
+            "语法" -> "这道题必须考同一个语法点，但换一个不同场景的句子，让学生把规则用在新句子上，而不是背这一句。"
+            "用词" -> "这道题考搭配：在相近的候选词之间选对的那个，干扰项要是学生常见的中式搭配。"
+            "表达" -> "这道题考更地道的说法：给出口语但不够地道的表达，让学生选出母语者会用的版本。"
+            // No mistake means the sentence introduced a usable pattern: the job is to
+            // generalise it, not to re-test what the learner already got right.
+            else -> "这句学生写得没错。请找出句子里一个**可以举一反三的常用用法或搭配**，" +
+                "把考点放在这个用法上，并让学生在新语境里用一次；tip 里写清这条用法还能用在什么场合。"
+        }
         val allowed = if (isNew || box <= 0) {
             "CLOZE、MEANING、LISTEN"
         } else if (box <= 2) {
@@ -287,9 +307,10 @@ LISTEN（听英文选正确文本）、FIX_ERROR（句中有一处错误，选�
 - RECALL：不需要选项，prompt 填中文，answer 填英文。
 
 如果学生以前在这句上犯过错，出题要针对同样的点。
+$focusRule
 
 严格只输出 JSON：
-{"type":"题型","prompt":"学生看到的内容","speak":"需要朗读的英文（仅 LISTEN，其他空字符串）","choices":[{"text":"选项","correct":true或false}],"answer":"正确答案全文","tip":"一句话考点提示，15字以内"}"""
+{"type":"题型","prompt":"学生看到的内容","speak":"需要朗读的英文（仅 LISTEN，其他空字符串）","choices":[{"text":"选项","correct":true或false}],"answer":"正确答案全文","tip":"一句话考点提示，15字以内","usage":"这条用法的规则或适用场合（学生没错时必填，否则空字符串）","more":"同一条用法的另外两句英文例句，用换行分隔（没有就给空字符串）"}"""
         val user = buildString {
             append("原句英文：$english\n")
             append("中文译文：$chinese\n")
@@ -319,6 +340,12 @@ LISTEN（听英文选正确文本）、FIX_ERROR（句中有一处错误，选�
                 choices = choices,
                 answer = answer,
                 tip = o.optString("tip").trim(),
+                usage = o.optString("usage").trim(),
+                moreExamples = o.optString("more").trim()
+                    .split("\n")
+                    .map { it.trim().removePrefix("-").trim() }
+                    .filter { it.isNotBlank() }
+                    .take(3),
             )
         }.onFailure { flogError { "yijian ai exercise: ${it.message}" } }.getOrNull()
     }
