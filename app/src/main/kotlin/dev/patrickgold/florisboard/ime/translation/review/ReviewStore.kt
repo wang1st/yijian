@@ -60,6 +60,20 @@ data class ReviewSnapshot(
     val reviewedToday: Int,
     val goodToday: Int,
     val streakDays: Int,
+    /** Cards answered correctly today, used for the "remembered" daily quest. */
+    val rememberedToday: Int = goodToday,
+    /** Accuracy over everything reviewed today, 0..100. */
+    val accuracyToday: Int = 0,
+    /**
+     * XP: 10 per review plus a 5-point bonus for remembering it. Cheap to compute and
+     * monotonic, so it gives the home screen a number worth growing.
+     */
+    val xpTotal: Int = 0,
+    val xpToday: Int = 0,
+    /** Reviews per day for the last 7 days, oldest first. */
+    val lastSevenDays: List<Int> = emptyList(),
+    /** Consecutive correct answers ending now, the streak that achievements hang off. */
+    val correctRun: Int = 0,
 )
 
 /**
@@ -138,13 +152,27 @@ object ReviewStore {
                 val state = readSrs()
                 val today = dayFormat.format(Date(now))
                 val todayStats = state.days[today]
+                val allDays = state.days.values
+                val done = todayStats?.done ?: 0
+                val good = todayStats?.good ?: 0
+                // 10 XP per review, +5 for a remembered one.
+                val xpFor = { d: DayStats? -> (d?.done ?: 0) * 10 + (d?.good ?: 0) * 5 }
+                val week = (6 downTo 0).map { back ->
+                    val day = dayFormat.format(Date(now - back * DAY_MS))
+                    state.days[day]?.done ?: 0
+                }
                 ReviewSnapshot(
                     totalCards = cards.size,
                     dueCount = cards.count { !it.isNew && it.dueMillis <= now },
                     newCount = cards.count { it.isNew },
-                    reviewedToday = todayStats?.done ?: 0,
-                    goodToday = todayStats?.good ?: 0,
+                    reviewedToday = done,
+                    goodToday = good,
                     streakDays = computeStreak(state, now),
+                    accuracyToday = if (done == 0) 0 else (good * 100 / done),
+                    xpTotal = allDays.sumOf { xpFor(it) },
+                    xpToday = xpFor(todayStats),
+                    lastSevenDays = week,
+                    correctRun = state.correctRun,
                 )
             }
         }
@@ -177,6 +205,7 @@ object ReviewStore {
                     reps = old.reps + 1,
                     lapses = old.lapses + if (grade == Grade.FORGOT) 1 else 0,
                 )
+                state.correctRun = if (grade == Grade.GOOD) state.correctRun + 1 else 0
                 val today = dayFormat.format(Date(now))
                 val stats = state.days[today] ?: DayStats()
                 state.days[today] = stats.copy(
@@ -187,6 +216,47 @@ object ReviewStore {
             }
         }
 
+    /**
+     * Adds model-generated sentences to the review pool.
+     *
+     * They are written to the practice log as ordinary entries (original == corrected, no
+     * corrections), which keeps one storage path and means the existing card derivation picks
+     * them up. The Chinese side is stored as the translation, which is what the exercise prompts
+     * with.
+     *
+     * @return how many cards were added.
+     */
+    suspend fun addGeneratedCards(cards: List<GeneratedSentence>): Int = withContext(Dispatchers.IO) {
+        if (cards.isEmpty()) return@withContext 0
+        mutex.withLock {
+            val existing = runCatching { buildCards().map { it.id }.toSet() }.getOrDefault(emptySet())
+            var added = 0
+            runCatching {
+                practiceFile.parentFile?.mkdirs()
+                practiceFile.appendText(buildString {
+                    for (c in cards) {
+                        if (cardId(c.english) in existing) continue
+                        val entry = PracticeEntry(
+                            timestamp = System.currentTimeMillis(),
+                            original = c.english,
+                            corrected = c.english,
+                            translation = c.chinese,
+                            corrections = emptyList(),
+                            note = c.focus,
+                        )
+                        append(entry.toJson().toString())
+                        append("\n")
+                        added++
+                    }
+                })
+            }.onFailure { flogError { "yijian review: failed to add generated cards: ${it.message}" } }
+            added
+        }
+    }
+
+    /** A generated sentence waiting to be stored. */
+    data class GeneratedSentence(val english: String, val chinese: String, val focus: String)
+
     // ---- persistence -------------------------------------------------------------
 
     private data class CardState(val box: Int, val due: Long, val reps: Int, val lapses: Int)
@@ -194,6 +264,8 @@ object ReviewStore {
     private class SrsState(
         val cards: MutableMap<String, CardState> = mutableMapOf(),
         val days: MutableMap<String, DayStats> = mutableMapOf(),
+        /** Consecutive remembered answers; reset by a miss. */
+        var correctRun: Int = 0,
     )
 
     private fun readSrs(): SrsState {
@@ -201,6 +273,7 @@ object ReviewStore {
         if (!srsFile.exists()) return state
         runCatching {
             val root = JSONObject(srsFile.readText())
+            state.correctRun = root.optInt("correctRun", 0)
             val cards = root.optJSONObject("cards")
             if (cards != null) {
                 for (key in cards.keys()) {
@@ -245,6 +318,7 @@ object ReviewStore {
             srsFile.writeText(JSONObject().apply {
                 put("cards", cards)
                 put("days", days)
+                put("correctRun", state.correctRun)
             }.toString())
         }.onFailure { flogError { "yijian review: failed to write srs state: ${it.message}" } }
     }

@@ -70,6 +70,7 @@ import dev.patrickgold.florisboard.app.settings.localization.LocalizationScreen
 import dev.patrickgold.florisboard.app.settings.localization.SelectLocaleScreen
 import dev.patrickgold.florisboard.app.settings.localization.SubtypeEditorScreen
 import dev.patrickgold.florisboard.app.settings.media.MediaScreen
+import dev.patrickgold.florisboard.app.settings.review.ReviewGenerateScreen
 import dev.patrickgold.florisboard.app.settings.review.ReviewHistoryScreen
 import dev.patrickgold.florisboard.app.settings.review.ReviewHomeScreen
 import dev.patrickgold.florisboard.app.settings.review.ReviewPracticeScreen
@@ -187,6 +188,10 @@ object Routes {
         @Serializable
         @Deeplink("settings/review/history")
         object ReviewHistory
+
+        @Serializable
+        @Deeplink("settings/review/generate")
+        object ReviewGenerate
 
         @Serializable
         @Deeplink("settings/typing")
@@ -348,6 +353,7 @@ object Routes {
             composableWithDeepLink(Settings.Review::class) { ReviewHomeScreen() }
             composableWithDeepLink(Settings.ReviewPractice::class) { ReviewPracticeScreen() }
             composableWithDeepLink(Settings.ReviewHistory::class) { ReviewHistoryScreen() }
+            composableWithDeepLink(Settings.ReviewGenerate::class) { ReviewGenerateScreen() }
 
             composableWithDeepLink(Settings.Typing::class) { TypingScreen() }
 

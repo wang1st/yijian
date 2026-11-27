@@ -75,6 +75,7 @@ import dev.patrickgold.florisboard.app.Routes
 import dev.patrickgold.florisboard.app.components.FlorisScreenNg
 import dev.patrickgold.florisboard.ime.translation.review.DiffResult
 import dev.patrickgold.florisboard.ime.translation.review.Grade
+import dev.patrickgold.florisboard.ime.translation.review.ReviewAi
 import dev.patrickgold.florisboard.ime.translation.review.ReviewCard
 import dev.patrickgold.florisboard.ime.translation.review.ReviewSnapshot
 import dev.patrickgold.florisboard.ime.translation.review.ReviewStore
@@ -86,15 +87,15 @@ import java.util.Locale
 
 // ---- Duolingo-inspired palette ------------------------------------------------------
 
-private val DuoGreen = Color(0xFF58CC02)
+internal val DuoGreen = Color(0xFF58CC02)
 private val DuoGreenShade = Color(0xFF46A302)
-private val DuoBlue = Color(0xFF1CB0F6)
+internal val DuoBlue = Color(0xFF1CB0F6)
 private val DuoBlueShade = Color(0xFF1899D6)
 private val DuoRed = Color(0xFFFF4B4B)
 private val DuoRedShade = Color(0xFFD33131)
 
 @Composable
-private fun duoCardBg(): Color =
+internal fun duoCardBg(): Color =
     if (isSystemInDarkTheme()) Color(0xFF1F2023) else Color.White
 
 @Composable
@@ -102,7 +103,7 @@ private fun duoBorder(): Color =
     if (isSystemInDarkTheme()) Color(0xFF33353A) else Color(0xFFE5E5E5)
 
 @Composable
-private fun duoTextMuted(): Color =
+internal fun duoTextMuted(): Color =
     if (isSystemInDarkTheme()) Color(0xFFAFB1B6) else Color(0xFF777777)
 
 /** Bottom-sheet radius used for cards and panels. */
@@ -113,7 +114,7 @@ private val SheetShape = RoundedCornerShape(16.dp)
  * physical key. Used for every primary action in the review flow.
  */
 @Composable
-private fun DuoButton(
+internal fun DuoButton(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -157,7 +158,7 @@ private fun DuoButton(
 }
 
 @Composable
-private fun DuoSecondaryButton(
+internal fun DuoSecondaryButton(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -344,6 +345,8 @@ fun ReviewPracticeScreen() {
     var version by remember { mutableIntStateOf(0) }
     var diff by remember { mutableStateOf<DiffResult?>(null) }
     var goodCount by remember { mutableIntStateOf(0) }
+    var aiComment by remember { mutableStateOf<String?>(null) }
+    var aiChecking by remember { mutableStateOf(false) }
 
     fun startCard(card: ReviewCard) {
         val wordCount = Regex("[A-Za-z0-9']+").findAll(card.entry.corrected).count()
@@ -352,6 +355,8 @@ fun ReviewPracticeScreen() {
         if (tiles == null) mode = InputMode.KEYBOARD
         typed = ""
         diff = null
+        aiComment = null
+        aiChecking = false
         version++
     }
 
@@ -419,8 +424,29 @@ fun ReviewPracticeScreen() {
                         onSwitchMode = { mode = if (mode == InputMode.TILES) InputMode.KEYBOARD else InputMode.TILES },
                         onCheck = {
                             val answer = if (mode == InputMode.TILES) tiles?.answer() ?: "" else typed
-                            diff = WordDiff.grade(card.entry.corrected, answer)
+                            val local = WordDiff.grade(card.entry.corrected, answer)
+                            diff = local
+                            aiComment = null
                             phase = Phase.GRADED
+                            // Local diff is decisive for clear hits/misses; only the ambiguous
+                            // band is worth a model call, which keeps the cost low.
+                            if (ReviewAi.shouldAskAi(local.similarity)) {
+                                aiChecking = true
+                                scope.launch {
+                                    val verdict = ReviewAi.gradeAnswer(
+                                        target = card.entry.corrected,
+                                        answer = answer,
+                                        chinese = card.entry.translation,
+                                    )
+                                    aiComment = when {
+                                        verdict.accepted -> "AI 判为同义表达：${verdict.feedback}".trimEnd('：')
+                                        verdict.fix.isNotBlank() -> "AI 认为还差：${verdict.fix}"
+                                        verdict.feedback.isNotBlank() -> "AI：${verdict.feedback}"
+                                        else -> null
+                                    }
+                                    aiChecking = false
+                                }
+                            }
                         },
                         onGrade = { g ->
                             scope.launch {
@@ -583,7 +609,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.sessionContent(
 
         if (phase == Phase.GRADED && diff != null) {
             Spacer(modifier = Modifier.height(12.dp))
-            GradeFeedback(diff = diff, card = card)
+            GradeFeedback(diff = diff, card = card, aiComment = aiComment, aiChecking = aiChecking)
         }
     }
 
@@ -618,7 +644,12 @@ private fun androidx.compose.foundation.layout.ColumnScope.sessionContent(
 
 /** Green/red feedback panel shown after checking, Douolingo style. */
 @Composable
-private fun GradeFeedback(diff: DiffResult, card: ReviewCard) {
+private fun GradeFeedback(
+    diff: DiffResult,
+    card: ReviewCard,
+    aiComment: String? = null,
+    aiChecking: Boolean = false,
+) {
     val perfect = diff.similarity >= 90
     val accent = if (perfect) DuoGreen else DuoRed
     val bg = if (isSystemInDarkTheme()) {
@@ -668,6 +699,26 @@ private fun GradeFeedback(diff: DiffResult, card: ReviewCard) {
             }
         }
         Text(text = annotated, fontSize = 17.sp, lineHeight = 25.sp)
+        if (aiChecking) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(
+                    color = DuoBlue,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(14.dp),
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("AI 正在判分…", fontSize = 12.sp, color = duoTextMuted())
+            }
+        } else if (aiComment != null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = aiComment,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                color = DuoBlue,
+            )
+        }
         if (card.entry.corrections.isNotEmpty()) {
             Spacer(modifier = Modifier.height(10.dp))
             card.entry.corrections.take(3).forEach { c ->
