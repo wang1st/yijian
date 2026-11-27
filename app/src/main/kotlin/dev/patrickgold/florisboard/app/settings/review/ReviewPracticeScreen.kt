@@ -23,6 +23,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -121,15 +122,20 @@ fun ReviewPracticeScreen() {
         version++
     }
 
+    val navController = dev.patrickgold.florisboard.app.LocalNavController.current
+    val finished = st.phase == SessionPhase.DONE
+
     FlorisScreenNg(
         title = "今日练习",
         previewFieldVisible = false,
+        // The celebration fills the screen edge to edge.
+        navigationIconVisible = !finished,
     ) { contentPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(contentPadding)
-                .padding(horizontal = 16.dp),
+                .padding(if (finished) PaddingValues(0.dp) else contentPadding)
+                .padding(horizontal = if (finished) 0.dp else 16.dp),
         ) {
             when (st.phase) {
                 SessionPhase.LOADING -> Box(
@@ -139,7 +145,14 @@ fun ReviewPracticeScreen() {
 
                 SessionPhase.EMPTY -> SessionEmptyState()
 
-                SessionPhase.DONE -> SessionDoneState(total = st.total, good = st.goodCount)
+                SessionPhase.DONE -> SessionCelebration(
+                    total = st.total,
+                    good = st.goodCount,
+                    onFinish = {
+                        // Back to the review tab rather than deeper into the stack.
+                        navController.popBackStack()
+                    },
+                )
 
                 else -> {
                     val card = st.card ?: return@Column
@@ -549,17 +562,3 @@ private fun SessionEmptyState() {
     }
 }
 
-@Composable
-private fun SessionDoneState(total: Int, good: Int) {
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text("🏆", fontSize = 64.sp)
-        Spacer(modifier = Modifier.height(12.dp))
-        Text("练习完成！", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(6.dp))
-        Text("共 $total 张 · 记得 $good 张", fontSize = 14.sp, color = duoTextMuted())
-    }
-}
