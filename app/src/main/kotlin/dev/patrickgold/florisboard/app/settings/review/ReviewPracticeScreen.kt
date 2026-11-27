@@ -213,7 +213,9 @@ private fun androidx.compose.foundation.layout.ColumnScope.SessionBody(
                     }
                     AnswerSurface(
                         state = surface,
-                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        // min 56 dp as measured, but grows when the option wraps: Chinese
+                        // translations here are often two lines.
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
                         onClick = if (state.phase == SessionPhase.QUESTION) {
                             { session.pick(choice) }
                         } else null,

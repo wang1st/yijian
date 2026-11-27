@@ -209,12 +209,14 @@ object ExerciseFactory {
         chinese: String,
         others: List<ReviewCard>,
     ): PreparedExercise {
-        val distractors = others
+        // Distractors should be plausible, not obviously unrelated. Prefer translations of a
+        // similar length, which is what makes the choice require actually reading the English.
+        val pool = others
             .map { it.entry.translation }
             .filter { it.isNotBlank() && it != chinese }
             .distinct()
-            .shuffled()
-            .take(2)
+        val byLength = pool.sortedBy { kotlin.math.abs(it.length - chinese.length) }
+        val distractors = byLength.take(2)
         val choices = (distractors + chinese).shuffled().map { Choice(it, it == chinese) }
         // Two options is still a fair question when the pool is thin.
         return PreparedExercise(ExerciseType.MEANING, card, english, choices, chinese)

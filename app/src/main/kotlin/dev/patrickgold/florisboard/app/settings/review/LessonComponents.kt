@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -295,14 +296,13 @@ internal fun LessonProgressBar(progress: Float, label: String) {
             modifier = Modifier
                 .weight(1f)
                 .height(16.dp)
-                .fillMaxWidth()
                 .clip(RoundedCornerShape(8.dp))
                 .background(if (isSystemInDarkTheme()) Color(0xFF2E3034) else DuoSwan),
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth(progress.coerceIn(0f, 1f))
-                    .height(16.dp)
+                    .fillMaxHeight()
                     .clip(RoundedCornerShape(8.dp))
                     .background(DuoGreen)
                     // The 3 dp shine inset 4 dp from the top, as measured.
