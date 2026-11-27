@@ -105,6 +105,7 @@ fun MainStatsScreen() {
         previewFieldVisible = false,
         navigationIconVisible = false,
         mainNavigationVisible = true,
+        compactAppBar = true,
     ) { contentPadding ->
         val s = stats
         if (s == null) {
@@ -127,7 +128,13 @@ fun MainStatsScreen() {
                 ) {
                     StatTile("${s.sentences}", "练过的句子", StatsBlue, Modifier.weight(1f))
                     StatTile("${s.words}", "英文词数", StatsGreen, Modifier.weight(1f))
-                    StatTile("${s.streakDays}", "连续复习", StatsRed, Modifier.weight(1f))
+                    // A zero streak is not an error: keep it neutral rather than alarm-red.
+                    StatTile(
+                        "${s.streakDays}",
+                        "连续复习",
+                        if (s.streakDays > 0) StatsGreen else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+                        Modifier.weight(1f),
+                    )
                 }
 
                 Card(

@@ -56,6 +56,7 @@ fun HomeScreen() {
         navigationIconVisible = false,
         previewFieldVisible = true,
         mainNavigationVisible = true,
+        compactAppBar = true,
     ) { contentPadding ->
         ScrollableScreenColumn(contentPadding) {
             if (!isFlorisBoardEnabled) {

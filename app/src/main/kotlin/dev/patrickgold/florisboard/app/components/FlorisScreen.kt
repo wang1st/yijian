@@ -31,6 +31,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MediumFlexibleTopAppBar
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarColors
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
@@ -66,6 +67,8 @@ fun FlorisScreenNg(
     actions: FlorisScreenActions = {},
     /** Shows the app's bottom navigation; used by the four top-level pages. */
     mainNavigationVisible: Boolean = false,
+    /** Use the compact single-line app bar (top-level pages) instead of the tall collapsed one. */
+    compactAppBar: Boolean = false,
     bottomBar: FlorisScreenBottomBar = {},
     fab: FlorisScreenFab = {},
     content: @Composable (PaddingValues) -> Unit,
@@ -95,6 +98,7 @@ fun FlorisScreenNg(
                 }).takeIf { navigationIconVisible },
                 actions,
                 scrollBehavior,
+                compact = compactAppBar,
             ) },
         bottomBar = {
             if (mainNavigationVisible) {
@@ -119,20 +123,34 @@ fun FlorisAppBar(
         containerColor = MaterialTheme.colorScheme.surfaceContainer,
         scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
     ),
+    compact: Boolean = false,
 ) {
-    MediumFlexibleTopAppBar(
-        navigationIcon = navigationIcon ?: {},
-        title = {
-            Text(
-                text = title,
-                overflow = TextOverflow.Ellipsis,
-                maxLines = 1,
-            )
-        },
-        actions = { Row(Modifier.padding(end = 8.dp), content = actions) },
-        colors = colors,
-        scrollBehavior = scrollBehavior,
-    )
+    val titleContent: @Composable () -> Unit = {
+        Text(
+            text = title,
+            overflow = TextOverflow.Ellipsis,
+            maxLines = 1,
+        )
+    }
+    val actionContent: @Composable RowScope.() -> Unit = { Row(Modifier.padding(end = 8.dp), content = actions) }
+    if (compact) {
+        // Top-level pages: one line, so the page content starts higher up the screen.
+        TopAppBar(
+            navigationIcon = navigationIcon ?: {},
+            title = titleContent,
+            actions = actionContent,
+            colors = colors,
+            scrollBehavior = scrollBehavior,
+        )
+    } else {
+        MediumFlexibleTopAppBar(
+            navigationIcon = navigationIcon ?: {},
+            title = titleContent,
+            actions = actionContent,
+            colors = colors,
+            scrollBehavior = scrollBehavior,
+        )
+    }
 }
 
 @Composable

@@ -200,6 +200,7 @@ fun ReviewHomeScreen() {
         previewFieldVisible = false,
         navigationIconVisible = false,
         mainNavigationVisible = true,
+        compactAppBar = true,
     ) { contentPadding ->
         Column(
             modifier = Modifier
@@ -211,37 +212,7 @@ fun ReviewHomeScreen() {
             val s = snapshot
             val pending = (s?.dueCount ?: 0) + (s?.newCount ?: 0)
 
-            // Streak hero card
-            Card(
-                shape = SheetShape,
-                colors = CardDefaults.cardColors(containerColor = duoCardBg()),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 16.dp),
-            ) {
-                Row(
-                    modifier = Modifier.padding(20.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text("🔥", fontSize = 40.sp)
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column {
-                        Text(
-                            text = "${s?.streakDays ?: 0} 天连续复习",
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.Bold,
-                        )
-                        Text(
-                            text = if (s == null) "加载中…"
-                            else "共 ${s.totalCards} 张卡片 · 今日已完成 ${s.reviewedToday} 张",
-                            fontSize = 13.sp,
-                            color = duoTextMuted(),
-                        )
-                    }
-                }
-            }
-
-            // Today's goal card
+            // One hero card carries the whole decision: how am I doing, and what do I do now?
             Card(
                 shape = SheetShape,
                 colors = CardDefaults.cardColors(containerColor = duoCardBg()),
@@ -250,21 +221,54 @@ fun ReviewHomeScreen() {
                     .padding(top = 12.dp),
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
-                    Text("今日目标", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("🔥", fontSize = 34.sp)
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "${s?.streakDays ?: 0} 天连续复习",
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Text(
+                                text = if (s == null) "加载中…"
+                                else "共 ${s.totalCards} 张卡片 · 今日已完成 ${s.reviewedToday} 张",
+                                fontSize = 12.sp,
+                                color = duoTextMuted(),
+                            )
+                        }
+                        TextButton(onClick = { navController.navigate(Routes.Settings.ReviewHistory) }) {
+                            Text("历史", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = DuoBlue)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    // Today's workload, expressed as a bar so it reads at a glance.
+                    val done = s?.reviewedToday ?: 0
+                    val goal = (done + pending).coerceAtLeast(1)
+                    LinearProgressIndicator(
+                        progress = { done.toFloat() / goal },
+                        color = DuoGreen,
+                        trackColor = duoBorder(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(10.dp)
+                            .clip(RoundedCornerShape(5.dp)),
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = when {
                             s == null -> "…"
                             pending == 0 -> "今日已完成，明天见 🎉"
-                            else -> "待复习 ${s.dueCount} 张 · 新句子 ${s.newCount} 张"
+                            else -> "还剩 $pending 张：待复习 ${s.dueCount} · 新句子 ${s.newCount}"
                         },
                         fontSize = 13.sp,
                         color = duoTextMuted(),
                     )
-                    Spacer(modifier = Modifier.height(14.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
                     if (pending == 0) {
                         DuoSecondaryButton(
-                            text = "查看历史",
+                            text = "浏览历史",
                             onClick = { navController.navigate(Routes.Settings.ReviewHistory) },
                             modifier = Modifier.fillMaxWidth(),
                         )
@@ -272,12 +276,6 @@ fun ReviewHomeScreen() {
                         DuoButton(
                             text = "开始练习",
                             onClick = { navController.navigate(Routes.Settings.ReviewPractice) },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        DuoSecondaryButton(
-                            text = "浏览历史",
-                            onClick = { navController.navigate(Routes.Settings.ReviewHistory) },
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
@@ -289,7 +287,7 @@ fun ReviewHomeScreen() {
                 fontSize = 12.sp,
                 lineHeight = 18.sp,
                 color = duoTextMuted(),
-                modifier = Modifier.padding(vertical = 22.dp),
+                modifier = Modifier.padding(top = 16.dp, bottom = 20.dp),
             )
         }
     }
@@ -594,7 +592,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.sessionContent(
         }
     }
 
-    // Sticky bottom action bar
+    // Sticky bottom action bar, kept clear of the bottom navigation's gesture area.
     Spacer(modifier = Modifier.height(10.dp))
     if (phase == Phase.QUESTION) {
         val canCheck = if (mode == InputMode.TILES) tiles?.isComplete == true else typed.isNotBlank()
@@ -606,11 +604,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.sessionContent(
         )
     } else if (phase == Phase.GRADED && diff != null) {
         DuoButton(
-            text = when (diff.suggestedGrade) {
-                Grade.GOOD -> "继续"
-                Grade.HARD -> "继续"
-                Grade.FORGOT -> "继续"
-            },
+            text = "继续",
             onClick = { onGrade(diff.suggestedGrade) },
             modifier = Modifier.fillMaxWidth(),
         )
@@ -624,7 +618,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.sessionContent(
             DuoSecondaryButton("记得", onClick = { onGrade(Grade.GOOD) }, modifier = Modifier.weight(1f))
         }
     }
-    Spacer(modifier = Modifier.height(8.dp))
+    Spacer(modifier = Modifier.height(14.dp))
 }
 
 /** Green/red feedback panel shown after checking, Douolingo style. */
@@ -717,8 +711,9 @@ private fun WordChip(
         contentAlignment = Alignment.TopCenter,
     ) {
         Box(
+            // Hug the word instead of filling the row: tiles flow across the line like
+            // Duolingo's word bank, so a sentence fits in a couple of rows.
             modifier = Modifier
-                .fillMaxWidth()
                 .height(45.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(container)

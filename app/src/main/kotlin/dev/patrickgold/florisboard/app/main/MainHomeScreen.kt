@@ -93,6 +93,7 @@ fun MainHomeScreen() {
         previewFieldVisible = true,
         navigationIconVisible = false,
         mainNavigationVisible = true,
+        compactAppBar = true,
     ) { contentPadding ->
         Column(
             modifier = Modifier
