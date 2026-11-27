@@ -401,6 +401,8 @@ fun ReviewPracticeScreen() {
                         phase = phase,
                         typed = typed,
                         diff = diff,
+                        aiComment = aiComment,
+                        aiChecking = aiChecking,
                         version = version,
                         onTyped = { typed = it },
                         onPick = { source ->
@@ -479,6 +481,8 @@ private fun androidx.compose.foundation.layout.ColumnScope.sessionContent(
     phase: Phase,
     typed: String,
     diff: DiffResult?,
+    aiComment: String?,
+    aiChecking: Boolean,
     version: Int,
     onTyped: (String) -> Unit,
     onPick: (Int) -> Unit,
