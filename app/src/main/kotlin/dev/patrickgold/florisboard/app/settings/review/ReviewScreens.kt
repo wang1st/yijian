@@ -419,12 +419,14 @@ fun ReviewPracticeScreen() {
                                 picked = choice
                                 // Choice questions are graded the moment an option is tapped:
                                 // there is nothing to assemble and no diff to compute.
-                                val ex = exercise ?: return@sessionContent
+                                // Note: no early return here — bailing out of this lambda
+                                // would skip the state change below and freeze the screen.
+                                val answerText = exercise?.answer ?: card.entry.corrected
                                 diff = null
                                 aiComment = if (choice.correct) {
-                                    "答对了：${ex.answer}"
+                                    "答对了：$answerText"
                                 } else {
-                                    "正确答案是：${ex.answer}"
+                                    "正确答案是：$answerText"
                                 }
                                 phase = Phase.GRADED
                             }
@@ -679,7 +681,8 @@ private fun androidx.compose.foundation.layout.ColumnScope.sessionContent(
             }
         }
 
-        if (phase == Phase.GRADED && diff != null) {
+        // Choice questions have no diff: their result lives in `picked`.
+        if (phase == Phase.GRADED && (diff != null || picked != null)) {
             Spacer(modifier = Modifier.height(12.dp))
             GradeFeedback(
                 diff = diff,
@@ -702,7 +705,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.sessionContent(
             enabled = canCheck,
             modifier = Modifier.fillMaxWidth(),
         )
-    } else if (phase == Phase.GRADED && diff != null) {
+    } else if (phase == Phase.GRADED && (diff != null || picked != null)) {
         DuoButton(
             text = "继续",
             onClick = {
@@ -1037,12 +1040,20 @@ internal fun ChoiceRow(text: String, state: ChoiceState, onClick: () -> Unit) {
             .padding(horizontal = 16.dp, vertical = 14.dp),
         contentAlignment = Alignment.CenterStart,
     ) {
-        Text(
-            text = text,
-            fontSize = 16.sp,
-            lineHeight = 22.sp,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = text,
+                fontSize = 16.sp,
+                lineHeight = 22.sp,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f),
+            )
+            when (state) {
+                ChoiceState.CORRECT -> Text("✓", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = DuoGreen)
+                ChoiceState.WRONG -> Text("✕", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = DuoRed)
+                ChoiceState.IDLE -> Unit
+            }
+        }
     }
 }
 
