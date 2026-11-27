@@ -331,23 +331,5 @@ class EnglishTeacher {
         }
     }
 
-/**
- * Replaces a file's contents without ever leaving it empty.
- *
- * Writes the full new content to a sibling temp file, flushes it, then renames it over the
- * original — a rename on the same filesystem is atomic, so a crash mid-write leaves either the
- * old file or the new one, never a truncated one. Shared by every persistent store in the
- * practice/review pipeline.
- */
-internal fun atomicRewriteFile(file: File, content: String) {
-    val dir = file.parentFile ?: return
-    val tmp = File(dir, "${file.name}.tmp")
-    tmp.writeText(content)
-    if (!tmp.renameTo(file)) {
-        // Rename can fail across some mount types; fall back but keep the temp copy as a backup.
-        file.writeText(content)
-        tmp.delete()
-    }
-}
 
 }
