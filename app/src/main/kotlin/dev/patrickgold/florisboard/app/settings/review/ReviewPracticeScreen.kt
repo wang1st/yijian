@@ -390,6 +390,7 @@ private fun AnswerArea(
                         if (source !in tiles.placed) {
                             WordChip(text = tile.text) {
                                 tiles.placed.add(source)
+                                session.markAnswerStarted()
                                 onTilesChanged()
                             }
                         }

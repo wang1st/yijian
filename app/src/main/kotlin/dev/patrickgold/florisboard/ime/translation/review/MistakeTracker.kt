@@ -101,7 +101,7 @@ object MistakeTracker {
                     put("last", s.lastOutcome)
                 })
             }
-            stateFile.writeText(root.toString())
+            dev.patrickgold.florisboard.ime.translation.atomicRewriteFile(stateFile, root.toString())
         }.onFailure { flogError { "yijian mistakes: write failed: ${it.message}" } }
     }
 

@@ -60,6 +60,12 @@ data class SessionState(
     val aiChecking: Boolean = false,
     val detailOpen: Boolean = false,
     val goodCount: Int = 0,
+    /**
+     * True once the learner has begun answering this card. A late model-authored exercise must
+     * not replace a question that is already being answered — switching the type mid-answer
+     * would wipe the tiles the learner already placed.
+     */
+    val answerStarted: Boolean = false,
 ) {
     val card: ReviewCard? get() = queue.getOrNull(index)
     val total: Int get() = queue.size
@@ -127,12 +133,14 @@ class PracticeSession(private val host: SessionHost) {
             aiComment = null,
             aiChecking = false,
             detailOpen = false,
+            answerStarted = false,
             // Tiles are only meaningful for recall; other types render their own input.
             inputMode = InputMode.TILES,
         )
         val ai = host.prepareExercise(card, state.queue.filter { it.id != card.id })
-        // The user may have answered already while the model was thinking.
-        if (state.phase == SessionPhase.QUESTION && state.card?.id == card.id) {
+        // Accept the model-authored exercise only if the learner has not started answering the
+        // local one yet; swapping the question under their fingers loses placed tiles.
+        if (state.phase == SessionPhase.QUESTION && state.card?.id == card.id && !state.answerStarted) {
             state = state.copy(aiExercise = ai, preparing = false)
         } else {
             state = state.copy(preparing = false)
@@ -142,7 +150,15 @@ class PracticeSession(private val host: SessionHost) {
     // ---- events ---------------------------------------------------------------------
 
     fun setTyped(value: String) {
-        if (state.phase == SessionPhase.QUESTION) state = state.copy(typed = value)
+        if (state.phase != SessionPhase.QUESTION) return
+        state = state.copy(typed = value, answerStarted = state.answerStarted || value.isNotBlank())
+    }
+
+    /** Called by the tile view when the first word is placed, so the session knows work began. */
+    fun markAnswerStarted() {
+        if (state.phase == SessionPhase.QUESTION && !state.answerStarted) {
+            state = state.copy(answerStarted = true)
+        }
     }
 
     fun toggleInputMode() {
@@ -158,6 +174,7 @@ class PracticeSession(private val host: SessionHost) {
     /** A multiple-choice answer: graded immediately, there is nothing to assemble. */
     fun pick(choice: PickedChoice) {
         if (state.phase != SessionPhase.QUESTION) return
+        state = state.copy(answerStarted = true)
         val answer = state.aiExercise?.answer ?: state.exercise?.answer ?: state.card?.entry?.corrected.orEmpty()
         state = state.copy(
             picked = choice,

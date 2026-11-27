@@ -315,11 +315,12 @@ object ReviewStore {
                     put("good", s.good)
                 })
             }
-            srsFile.writeText(JSONObject().apply {
+            val content = JSONObject().apply {
                 put("cards", cards)
                 put("days", days)
                 put("correctRun", state.correctRun)
-            }.toString())
+            }.toString()
+            dev.patrickgold.florisboard.ime.translation.atomicRewriteFile(srsFile, content)
         }.onFailure { flogError { "yijian review: failed to write srs state: ${it.message}" } }
     }
 

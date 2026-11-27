@@ -63,12 +63,22 @@ object PracticeExporter {
         return JSONObject().apply {
             put("exportedAt", System.currentTimeMillis())
             put("app", "yijian")
-            put("version", 1)
+            put("version", 2)
             put("count", entries.size)
             put("entries", org.json.JSONArray().apply {
                 entries.forEach { put(it) }
             })
+            // The schedule and mistake progress cannot be rebuilt from the entries alone;
+            // without them a restored device would treat every card as brand new.
+            put("srs", readJson(context, "yijian_srs.json"))
+            put("mistakes", readJson(context, "yijian_mistakes.json"))
         }
+    }
+
+    private fun readJson(context: Context, name: String): JSONObject {
+        val file = File(context.filesDir, name)
+        if (!file.exists()) return JSONObject()
+        return runCatching { JSONObject(file.readText()) }.getOrElse { JSONObject() }
     }
 
     private fun readAll(context: Context): List<JSONObject> {

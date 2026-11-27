@@ -117,8 +117,10 @@ fun MainHomeScreen() {
             }.takeLast(40)
             if (samples.isNotEmpty()) {
                 weakSpots = ReviewAi.analyzeWeaknesses(samples)
-                WeakSpotCache.save(weakSpots)
             }
+            // Save even when empty: the day is checked either way, so the analysis does not
+            // re-run on every cold start while there is nothing to analyse.
+            WeakSpotCache.save(weakSpots)
             analysing = false
             snap = ReviewStore.snapshot()
         }
@@ -547,20 +549,63 @@ private fun WeakSpotRow(spot: WeakSpot, max: Int) {
     }
 }
 
-/** One analysis per day is enough; the result is cached in memory for the session. */
+/**
+ * Weak-spot analysis cache, persisted across launches.
+ *
+ * The analysis costs a model call, so it runs at most once per day — not once per app start,
+ * which is what an in-memory cache would degrade into.
+ */
 private object WeakSpotCache {
-    private var cached: List<WeakSpot> = emptyList()
-    private var cachedDay: String = ""
+    private val file = java.io.File(
+        dev.patrickgold.florisboard.FlorisApplication.getHack().filesDir,
+        "yijian_weakspots.json",
+    )
 
     private fun today(): String =
         java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
 
-    fun load(): List<WeakSpot> = if (cachedDay == today()) cached else emptyList()
+    fun load(): List<WeakSpot> {
+        val cachedDay = runCatching {
+            val root = org.json.JSONObject(file.readText())
+            root.optString("day", "")
+        }.getOrDefault("")
+        if (cachedDay != today()) return emptyList()
+        return runCatching {
+            val root = org.json.JSONObject(file.readText())
+            val arr = root.optJSONArray("spots") ?: org.json.JSONArray()
+            (0 until arr.length()).mapNotNull { i ->
+                arr.optJSONObject(i)?.let {
+                    WeakSpot(
+                        topic = it.optString("topic"),
+                        count = it.optInt("count", 1),
+                        example = it.optString("example"),
+                        advice = it.optString("advice"),
+                    )
+                }
+            }.filter { it.topic.isNotBlank() }
+        }.getOrDefault(emptyList())
+    }
 
-    fun checkedToday(): Boolean = cachedDay == today()
+    fun checkedToday(): Boolean = runCatching {
+        org.json.JSONObject(file.readText()).optString("day", "") == today()
+    }.getOrDefault(false)
 
     fun save(spots: List<WeakSpot>) {
-        cached = spots
-        cachedDay = today()
+        runCatching {
+            val root = org.json.JSONObject().apply {
+                put("day", today())
+                put("spots", org.json.JSONArray().apply {
+                    spots.forEach { s ->
+                        put(org.json.JSONObject().apply {
+                            put("topic", s.topic)
+                            put("count", s.count)
+                            put("example", s.example)
+                            put("advice", s.advice)
+                        })
+                    }
+                })
+            }
+            file.writeText(root.toString())
+        }
     }
 }

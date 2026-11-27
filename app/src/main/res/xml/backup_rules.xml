@@ -17,4 +17,10 @@
     <include
         domain="file"
         path="yijian_srs.json"/>
+    <include
+        domain="file"
+        path="yijian_mistakes.json"/>
+    <include
+        domain="file"
+        path="yijian_weakspots.json"/>
 </full-backup-content>
