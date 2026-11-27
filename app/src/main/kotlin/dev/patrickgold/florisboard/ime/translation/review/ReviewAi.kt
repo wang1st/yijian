@@ -296,18 +296,19 @@ object ReviewAi {
             mistakeTag == "拼写" -> "CLOZE"            // fill in / pick the word they misspelled
             mistakeTag == "语法" || mistakeTag == "用法" -> "FIX_ERROR、CLOZE"  // force the choice
             mistakeTag == "用词" || mistakeTag == "表达" -> "CLOZE"            // pick the right collocation
-            isNew || box <= 0 -> "CLOZE、MEANING、LISTEN"
-            box <= 2 -> "RECALL、CLOZE、LISTEN、MEANING"
-            else -> "RECALL、FIX_ERROR、LISTEN"
+            // LISTEN is deliberately absent: with the original sentence among the options,
+            // "which did you hear" reduces to character matching, so it drills nothing.
+            isNew || box <= 0 -> "CLOZE、MEANING"
+            box <= 2 -> "RECALL、CLOZE、MEANING"
+            else -> "RECALL、FIX_ERROR"
         }
         val system = """你是英语老师，为学生出一道复习题。学生是中文母语者，水平中等偏下。
 可选题型（只允许这几种）：RECALL（看中文写英文）、CLOZE（句中挖一个词，四选一）、
-LISTEN（听英文选正确文本）、FIX_ERROR（句中有一处错误，选出正确版本）、MEANING（看英文选正确中文）。
+FIX_ERROR（句中有一处错误，选出正确版本）、MEANING（看英文选正确中文）。
 
 各题型要求：
 - CLOZE：从原句中挖掉一个**实词**（名词/动词/形容词），用 ____ 代替；给出 4 个选项，干扰项要和原文语境相配、长度相近，让学生必须靠语法或搭配判断，不能一眼排除。
   干扰项的标准：把它填进空格后，句子要**读起来像对但实际不合适**（时态不符、搭配不对、单复数不符）。禁止使用明显无关的词。
-- LISTEN：把原句作为正确选项，再写 2 个**同主题、长度相近、有细微差别**的干扰句（换时态、换介词、换单复数），不要写明显无关的句子。
 - FIX_ERROR：在原句基础上制造**一个**学生常犯的错误（缺冠词、第三人称单数少 s、时态错、介词错），给出错误版和正确版两个选项。
 - MEANING：中文译文作为正确选项，再写 2 个意思接近但不同的干扰译文。
 - RECALL：不需要选项，prompt 填中文，answer 填英文。
@@ -328,6 +329,7 @@ $focusRule
         return runCatching {
             val o = jsonObject(chat(system, user, maxTokens = 900))
             val type = o.optString("type").uppercase().trim()
+            // LISTEN no longer generated; still accepted if a cached model reply carries it.
             if (type !in setOf("RECALL", "CLOZE", "LISTEN", "FIX_ERROR", "MEANING")) return@runCatching null
             val arr = o.optJSONArray("choices") ?: JSONArray()
             val choices = (0 until arr.length()).mapNotNull { i ->

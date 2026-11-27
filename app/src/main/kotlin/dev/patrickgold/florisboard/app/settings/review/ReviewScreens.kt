@@ -112,6 +112,10 @@ internal fun duoCardBg(): Color =
 private fun duoBorder(): Color =
     if (isSystemInDarkTheme()) Color(0xFF33353A) else Color(0xFFE5E5E5)
 
+/** A border dark enough to read as an interactive control, not as a divider. */
+internal fun choiceBorder(): Color =
+    if (isSystemInDarkTheme()) Color(0xFF4A4D53) else Color(0xFFD0D0D0)
+
 @Composable
 internal fun duoTextMuted(): Color =
     if (isSystemInDarkTheme()) Color(0xFFAFB1B6) else Color(0xFF777777)
@@ -762,6 +766,16 @@ private fun androidx.compose.foundation.layout.ColumnScope.sessionContent(
             }
         }
 
+
+        if (phase == Phase.QUESTION && isChoiceExercise) {
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = "点上面任一选项作答",
+                fontSize = 12.sp,
+                color = duoTextMuted(),
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+            )
+        }
         Spacer(modifier = Modifier.height(12.dp))
         ExerciseDetail(
             card = card,
@@ -1111,7 +1125,7 @@ enum class ChoiceState { IDLE, CORRECT, WRONG }
 @Composable
 internal fun ChoiceRow(text: String, state: ChoiceState, onClick: () -> Unit) {
     val border = when (state) {
-        ChoiceState.IDLE -> duoBorder()
+        ChoiceState.IDLE -> choiceBorder()
         ChoiceState.CORRECT -> DuoGreen
         ChoiceState.WRONG -> DuoRed
     }
@@ -1126,7 +1140,7 @@ internal fun ChoiceRow(text: String, state: ChoiceState, onClick: () -> Unit) {
             .heightIn(min = 56.dp)
             .clip(RoundedCornerShape(14.dp))
             .background(bg)
-            .border(2.dp, border, RoundedCornerShape(14.dp))
+            .border(if (state == ChoiceState.IDLE) 1.5.dp else 2.5.dp, border, RoundedCornerShape(14.dp))
             .clickable(enabled = state == ChoiceState.IDLE, onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 14.dp),
         contentAlignment = Alignment.CenterStart,
@@ -1298,11 +1312,14 @@ internal fun ExerciseDetail(
                 color = DuoBlue,
                 modifier = Modifier.weight(1f),
             )
-            Text(
-                text = "练过 ${card.reps} 次" + if (card.lapses > 0) " · 忘过 ${card.lapses} 次" else "",
-                fontSize = 10.sp,
-                color = duoTextMuted(),
-            )
+            // Only worth showing once the card has actually been practised.
+            if (card.reps > 0) {
+                Text(
+                    text = "练过 ${card.reps} 次" + if (card.lapses > 0) " · 忘过 ${card.lapses} 次" else "",
+                    fontSize = 10.sp,
+                    color = duoTextMuted(),
+                )
+            }
         }
         if (expanded) {
             Column(modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp)) {
