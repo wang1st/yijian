@@ -68,6 +68,9 @@ import dev.patrickgold.florisboard.app.settings.localization.LocalizationScreen
 import dev.patrickgold.florisboard.app.settings.localization.SelectLocaleScreen
 import dev.patrickgold.florisboard.app.settings.localization.SubtypeEditorScreen
 import dev.patrickgold.florisboard.app.settings.media.MediaScreen
+import dev.patrickgold.florisboard.app.settings.review.ReviewHistoryScreen
+import dev.patrickgold.florisboard.app.settings.review.ReviewHomeScreen
+import dev.patrickgold.florisboard.app.settings.review.ReviewPracticeScreen
 import dev.patrickgold.florisboard.app.settings.smartbar.SmartbarScreen
 import dev.patrickgold.florisboard.app.settings.theme.ThemeScreen
 import dev.patrickgold.florisboard.app.settings.translation.TranslationScreen
@@ -156,6 +159,18 @@ object Routes {
         @Serializable
         @Deeplink("settings/translation")
         object Translation
+
+        @Serializable
+        @Deeplink("settings/review")
+        object Review
+
+        @Serializable
+        @Deeplink("settings/review/practice")
+        object ReviewPractice
+
+        @Serializable
+        @Deeplink("settings/review/history")
+        object ReviewHistory
 
         @Serializable
         @Deeplink("settings/typing")
@@ -312,6 +327,9 @@ object Routes {
 
             composableWithDeepLink(Settings.Smartbar::class) { SmartbarScreen() }
             composableWithDeepLink(Settings.Translation::class) { TranslationScreen() }
+            composableWithDeepLink(Settings.Review::class) { ReviewHomeScreen() }
+            composableWithDeepLink(Settings.ReviewPractice::class) { ReviewPracticeScreen() }
+            composableWithDeepLink(Settings.ReviewHistory::class) { ReviewHistoryScreen() }
 
             composableWithDeepLink(Settings.Typing::class) { TypingScreen() }
 

@@ -197,6 +197,9 @@ class TranslationManager(
         if (!prefs.translation.enabled.get()) return false
         val info = state.editor.info
         if (info.isRawInputEditor) return false
+        // Never translate inside yijian's own screens: the review practice field would
+        // otherwise translate the user's answer and give it away before grading.
+        if (info.packageName == FlorisApplication.getHack().packageName) return false
         return when (info.inputAttributes.variation) {
             InputAttributes.Variation.PASSWORD,
             InputAttributes.Variation.VISIBLE_PASSWORD,

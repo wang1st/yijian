@@ -27,6 +27,7 @@ import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.School
 import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.runtime.Composable
@@ -128,12 +129,19 @@ fun HomeScreen() {
             }
 
             SegmentedListColumn {
-                val count = 1
+                val count = 2
                 Preference(
                     shapes = ListItemDefaults.segmentedShapes(0, count),
                     icon = Icons.Outlined.Translate,
                     title = stringRes(R.string.settings__translation__title),
                     onClick = { navController.navigate(Routes.Settings.Translation) },
+                )
+                Preference(
+                    shapes = ListItemDefaults.segmentedShapes(1, count),
+                    icon = Icons.Outlined.School,
+                    title = "复习与练习",
+                    summary = "把翻译过的句子变成记忆卡片",
+                    onClick = { navController.navigate(Routes.Settings.Review) },
                 )
             }
 
