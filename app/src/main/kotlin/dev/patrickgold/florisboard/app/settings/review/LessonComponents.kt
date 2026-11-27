@@ -66,7 +66,16 @@ internal val AnswerRadius = RoundedCornerShape(12.dp)
 internal val ButtonRadius = RoundedCornerShape(16.dp)
 
 /** Visual state of an answer surface, mapped to a colour triple. */
-enum class SurfaceState { Neutral, Selected, Correct, Wrong, Done }
+enum class SurfaceState {
+    Neutral,
+    Selected,
+    Correct,
+    Wrong,
+    /** Not chosen, and the question is already graded: still fully readable, slightly dimmed. */
+    Recessed,
+    /** Consumed: a word tile that has been placed. Hidden on purpose. */
+    Done,
+}
 
 private data class SurfaceColors(val fill: Color, val line: Color, val text: Color)
 
@@ -82,8 +91,23 @@ private fun colorsFor(state: SurfaceState): SurfaceColors {
             text = if (dark) Color(0xFFEDEDED) else DuoEel,
         )
         SurfaceState.Selected -> SurfaceColors(mix(DuoIguana), DuoBlueJay, whaleText(dark))
-        SurfaceState.Correct -> SurfaceColors(mix(DuoSeaSponge), DuoTurtle, DuoGreenShade)
-        SurfaceState.Wrong -> SurfaceColors(mix(DuoWalkingFish), DuoRed, DuoRedShade)
+        // In dark mode the fill is a dim green, so the text must lighten rather than use the
+        // dark green that only works on the pale light-theme fill.
+        SurfaceState.Correct -> SurfaceColors(
+            fill = if (dark) Color(0xFF24400A) else DuoSeaSponge,
+            line = if (dark) Color(0xFF6FBF3A) else DuoTurtle,
+            text = if (dark) Color(0xFF9BE86A) else DuoGreenShade,
+        )
+        SurfaceState.Wrong -> SurfaceColors(
+            fill = if (dark) Color(0xFF4A1414) else DuoWalkingFish,
+            line = if (dark) DuoRed else DuoRed,
+            text = if (dark) Color(0xFFFF9B9B) else DuoRedShade,
+        )
+        SurfaceState.Recessed -> SurfaceColors(
+            fill = if (dark) Color(0xFF1A1B1E) else Color(0xFFF7F7F7),
+            line = if (dark) Color(0xFF3A3C41) else DuoSwan,
+            text = if (dark) Color(0xFF9E9E9E) else DuoHare,
+        )
         SurfaceState.Done -> SurfaceColors(
             fill = if (dark) Color(0xFF26272B) else DuoSwan,
             line = Color.Transparent,

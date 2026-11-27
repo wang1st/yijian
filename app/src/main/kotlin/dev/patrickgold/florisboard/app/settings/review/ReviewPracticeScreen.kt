@@ -209,7 +209,10 @@ private fun androidx.compose.foundation.layout.ColumnScope.SessionBody(
                         state.phase != SessionPhase.GRADED -> SurfaceState.Neutral
                         choice.correct -> SurfaceState.Correct
                         state.picked?.text == choice.text -> SurfaceState.Wrong
-                        else -> SurfaceState.Done
+                        // Never hide the options the learner did not pick: on a multiple
+                        // choice question they are the context that makes the answer mean
+                        // something. They stay fully legible, just slightly recessed.
+                        else -> SurfaceState.Recessed
                     }
                     AnswerSurface(
                         state = surface,
