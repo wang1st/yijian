@@ -16,6 +16,7 @@
 
 package dev.patrickgold.florisboard.ime.translation.review
 
+import dev.patrickgold.florisboard.ime.translation.atomicRewriteFile
 import dev.patrickgold.florisboard.FlorisApplication
 import dev.patrickgold.florisboard.ime.translation.EnglishTeacher
 import dev.patrickgold.florisboard.lib.devtools.flogError
@@ -102,7 +103,7 @@ object MistakeTracker {
                     put("last", s.lastOutcome)
                 })
             }
-            dev.patrickgold.florisboard.ime.translation.atomicRewriteFile(stateFile, root.toString())
+            atomicRewriteFile(stateFile, root.toString())
         }.onFailure { flogError { "yijian mistakes: write failed: ${it.message}" } }
     }
 

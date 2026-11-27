@@ -16,6 +16,7 @@
 
 package dev.patrickgold.florisboard.ime.translation.review
 
+import dev.patrickgold.florisboard.ime.translation.atomicRewriteFile
 import dev.patrickgold.florisboard.FlorisApplication
 import dev.patrickgold.florisboard.ime.translation.PracticeEntry
 import dev.patrickgold.florisboard.lib.devtools.flogError
@@ -320,7 +321,7 @@ object ReviewStore {
                 put("days", days)
                 put("correctRun", state.correctRun)
             }.toString()
-            dev.patrickgold.florisboard.ime.translation.atomicRewriteFile(srsFile, content)
+            atomicRewriteFile(srsFile, content)
         }.onFailure { flogError { "yijian review: failed to write srs state: ${it.message}" } }
     }
 
