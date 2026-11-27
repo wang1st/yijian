@@ -1,51 +1,83 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 译键 Yijian app icon: keyboard with A -> 中 (English to Chinese) -->
+<!--
+  译键 Yijian app icon.
+
+  Modelled on Duolingo's icon language: one bold silhouette, a saturated flat
+  background, a thick friendly outline, and nothing that disappears at 48dp.
+  A key is what the app is; "A → 中" is what it does.
+
+  Drawn on the 108x108 adaptive-icon grid with the content kept inside the
+  centre 72x72 safe zone.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <group android:translateX="10.26" android:translateY="10.26" android:scaleX="0.81" android:scaleY="0.81">
-        <!-- keyboard body -->
+
+    <!-- Scaled to 0.84 so the rotated keycap's corners stay inside the 36dp adaptive
+         safe circle (measured: 33.1dp); otherwise round masks clip the corners. -->
+    <group
+        android:scaleX="0.84"
+        android:scaleY="0.84"
+        android:pivotX="54"
+        android:pivotY="54">
+
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:rotation="-8">
+
+        <!-- Pressed edge: offset slab so the key looks physical -->
         <path
-            android:pathData="M31,35 h46 a8,8 0 0 1 8,8 v29 a8,8 0 0 1 -8,8 h-46 a8,8 0 0 1 -8,-8 v-29 a8,8 0 0 1 8,-8 z"
-            android:fillColor="#F2F0E8" />
-        <!-- A and arrow -->
+            android:pathData="M33,36 h42 a11,11 0 0 1 11,11 v24 a11,11 0 0 1 -11,11 h-42 a11,11 0 0 1 -11,-11 v-24 a11,11 0 0 1 11,-11 z"
+            android:fillColor="#3E8F00" />
+
+        <!-- Keycap face -->
         <path
-            android:pathData="M31.5,56 L36.2,42.8 C36.55,41.85 37.45,41.85 37.8,42.8 L42.5,56 M33.3,51 h7.4"
+            android:pathData="M33,31 h42 a11,11 0 0 1 11,11 v24 a11,11 0 0 1 -11,11 h-42 a11,11 0 0 1 -11,-11 v-24 a11,11 0 0 1 11,-11 z"
+            android:fillColor="#FFFFFF" />
+
+        <!-- A -->
+        <path
+            android:pathData="M36,62 L42.6,44 L49.2,62"
             android:strokeColor="#1C2B43"
-            android:strokeWidth="2.6"
+            android:strokeWidth="5.6"
             android:strokeLineCap="round"
             android:strokeLineJoin="round" />
         <path
-            android:pathData="M48,48 h6 M51,45 l3,3 -3,3"
+            android:pathData="M38.9,55.4 h7.4"
             android:strokeColor="#1C2B43"
-            android:strokeWidth="2.6"
-            android:strokeLineCap="round"
-            android:strokeLineJoin="round" />
-        <!-- key dots -->
-        <path
-            android:pathData="M31,62 h5 v4 h-5 z M41,62 h5 v4 h-5 z M51,62 h5 v4 h-5 z M61,62 h5 v4 h-5 z M71,62 h5 v4 h-5 z"
-            android:fillColor="#1C2B43" />
-        <!-- space bar -->
-        <path
-            android:pathData="M32,74 h4 M45,74 h18 M72,74 h4"
-            android:strokeColor="#1C2B43"
-            android:strokeWidth="3.2"
+            android:strokeWidth="5"
             android:strokeLineCap="round" />
-        <!-- 中 badge -->
+
+        <!-- Arrow: the translation step, kept short and bold -->
         <path
-            android:pathData="M65,25 h12 a7,7 0 0 1 7,7 v19 a7,7 0 0 1 -7,7 h-12 a7,7 0 0 1 -7,-7 v-19 a7,7 0 0 1 7,-7 z"
-            android:fillColor="#F2AD66"
-            android:strokeColor="#1C2B43"
-            android:strokeWidth="3" />
-        <!-- 中 glyph -->
+            android:pathData="M53,53 h6.4"
+            android:strokeColor="#58CC02"
+            android:strokeWidth="5.4"
+            android:strokeLineCap="round" />
         <path
-            android:pathData="M64.8,36 h12.4 v8.5 h-12.4 z M71,31.5 v20"
-            android:strokeColor="#1C2B43"
-            android:strokeWidth="2.6"
+            android:pathData="M56.6,49.6 l4,3.4 -4,3.4"
+            android:strokeColor="#58CC02"
+            android:strokeWidth="5.4"
             android:strokeLineCap="round"
             android:strokeLineJoin="round" />
+
+        <!-- 中 (zhōng): the standard construction — a rectangular mouth (口) with the
+             vertical stroke passing straight through its centre, projecting above and
+             below. Drawn on the same baseline as the A so the pair sits level. -->
+        <path
+            android:pathData="M68.8,48.6 h11.4 v9.2 h-11.4 z"
+            android:strokeColor="#1C2B43"
+            android:strokeWidth="4.2"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <path
+            android:pathData="M74.5,44.4 v18"
+            android:strokeColor="#1C2B43"
+            android:strokeWidth="4.2"
+            android:strokeLineCap="round" />
+    </group>
     </group>
 </vector>
