@@ -16,6 +16,7 @@
 
 package dev.patrickgold.florisboard.app.settings.review
 
+import androidx.compose.runtime.mutableStateOf
 import dev.patrickgold.florisboard.ime.translation.review.DiffResult
 import dev.patrickgold.florisboard.ime.translation.review.Grade
 import dev.patrickgold.florisboard.ime.translation.review.ReviewAi
@@ -92,8 +93,12 @@ interface SessionHost {
  * Every state change goes through here. The screen never mutates phase, picked or diff itself.
  */
 class PracticeSession(private val host: SessionHost) {
-    var state by androidx.compose.runtime.mutableStateOf(SessionState())
-        private set
+    private val stateFlow = mutableStateOf(SessionState())
+
+    /** Current state; the screen observes this and nothing else. */
+    var state: SessionState
+        get() = stateFlow.value
+        private set(value) { stateFlow.value = value }
 
     /** Loads the queue and prepares the first exercise. */
     suspend fun start() {
