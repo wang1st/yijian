@@ -64,6 +64,8 @@ fun FlorisScreenNg(
     navigationIcon: ImageVector = Icons.AutoMirrored.Filled.ArrowBack,
     navigationIconOnClick: (() -> Unit)? = null,
     actions: FlorisScreenActions = {},
+    /** Shows the app's bottom navigation; used by the four top-level pages. */
+    mainNavigationVisible: Boolean = false,
     bottomBar: FlorisScreenBottomBar = {},
     fab: FlorisScreenFab = {},
     content: @Composable (PaddingValues) -> Unit,
@@ -94,7 +96,13 @@ fun FlorisScreenNg(
                 actions,
                 scrollBehavior,
             ) },
-        bottomBar = bottomBar,
+        bottomBar = {
+            if (mainNavigationVisible) {
+                MainNavigationBar()
+            } else {
+                bottomBar()
+            }
+        },
         floatingActionButton = fab,
         containerColor = MaterialTheme.colorScheme.surfaceContainer,
         content = content,

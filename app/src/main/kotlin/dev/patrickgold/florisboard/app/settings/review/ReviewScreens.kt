@@ -196,8 +196,10 @@ fun ReviewHomeScreen() {
     LaunchedEffect(Unit) { snapshot = ReviewStore.snapshot() }
 
     FlorisScreenNg(
-        title = "复习与练习",
+        title = "复习",
         previewFieldVisible = false,
+        navigationIconVisible = false,
+        mainNavigationVisible = true,
     ) { contentPadding ->
         Column(
             modifier = Modifier

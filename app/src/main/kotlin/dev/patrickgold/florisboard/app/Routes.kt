@@ -46,6 +46,8 @@ import dev.patrickgold.florisboard.app.ext.ExtensionDetailScreen
 import dev.patrickgold.florisboard.app.ext.ExtensionEditScreen
 import dev.patrickgold.florisboard.app.ext.ExtensionImportScreen
 import dev.patrickgold.florisboard.app.ext.ExtensionImportScreenType
+import dev.patrickgold.florisboard.app.main.MainHomeScreen
+import dev.patrickgold.florisboard.app.main.MainStatsScreen
 import dev.patrickgold.florisboard.app.settings.HomeScreen
 import dev.patrickgold.florisboard.app.settings.about.AboutScreen
 import dev.patrickgold.florisboard.app.settings.about.ProjectLicenseScreen
@@ -105,6 +107,20 @@ object Routes {
         data class Screen(
             val hasRestoredBackup: Boolean = false,
         )
+    }
+
+    /**
+     * Top-level pages of the app (bottom navigation). [Settings] remains the settings tab;
+     * the review tab lives at Settings.Review.
+     */
+    object Main {
+        @Serializable
+        @Deeplink("main/home")
+        object Home
+
+        @Serializable
+        @Deeplink("main/stats")
+        object Stats
     }
 
     object Settings {
@@ -302,6 +318,8 @@ object Routes {
             }
 
             composableWithDeepLink(Settings.Home::class) { HomeScreen() }
+            composableWithDeepLink(Main.Home::class) { MainHomeScreen() }
+            composableWithDeepLink(Main.Stats::class) { MainStatsScreen() }
 
             composableWithDeepLink(Settings.Localization::class) { LocalizationScreen() }
             composableWithDeepLink(Settings.SelectLocale::class) { SelectLocaleScreen() }

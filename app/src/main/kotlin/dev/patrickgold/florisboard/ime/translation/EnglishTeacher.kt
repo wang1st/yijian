@@ -97,6 +97,20 @@ data class PracticeEntry(
  * and the recurring patterns) and emails it to the configured address.
  */
 class EnglishTeacher {
+    companion object {
+        /**
+         * Reads the practice log without instantiating the teacher (the report tab only needs
+         * the data, not the recording/email machinery).
+         */
+        suspend fun readEntriesStatic(): List<PracticeEntry> = withContext(Dispatchers.IO) {
+            val file = File(dev.patrickgold.florisboard.FlorisApplication.getHack().filesDir, "yijian_practice.jsonl")
+            if (!file.exists()) return@withContext emptyList()
+            file.readLines().mapNotNull { line ->
+                runCatching { PracticeEntry.fromJson(JSONObject(line)) }.getOrNull()
+            }
+        }
+    }
+
     private val prefs by FlorisPreferenceStore
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
