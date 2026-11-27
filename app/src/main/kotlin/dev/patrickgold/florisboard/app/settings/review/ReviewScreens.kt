@@ -16,7 +16,6 @@
 
 package dev.patrickgold.florisboard.app.settings.review
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -314,15 +313,12 @@ private class TileState(val target: String) {
     /** Display order is shuffled; each tile remembers where it belongs in the sentence. */
     val tiles: List<Tile> = words.mapIndexed { i, w -> Tile(w, i) }.shuffled()
 
-    /** Source indices placed so far, in the order the user tapped them. */
+    /**
+     * Source indices placed so far, in the order the user tapped them. Nothing is pre-placed:
+     * a locked first word reads as a hint the user did not ask for and blurs which tiles are
+     * selectable.
+     */
     val placed = mutableListOf<Int>()
-
-    /** The first word is pre-placed so the answer never starts from a blank slate. */
-    val freeCount = if (words.isEmpty()) 0 else 1
-
-    init {
-        if (freeCount > 0) placed.add(0)
-    }
 
     val isComplete: Boolean get() = placed.size == tiles.size
 
@@ -412,13 +408,13 @@ fun ReviewPracticeScreen() {
                         },
                         onUnpick = { pos ->
                             tiles?.let {
-                                if (phase == Phase.QUESTION && pos >= it.freeCount) {
+                                if (phase == Phase.QUESTION) {
                                     it.placed.removeAt(pos)
                                     version++
                                 }
                             }
                         },
-                        onUndo = { tiles?.let { if (it.placed.size > it.freeCount) { it.placed.removeLast(); version++ } } },
+                        onUndo = { tiles?.let { if (it.placed.isNotEmpty()) { it.placed.removeLast(); version++ } } },
                         onHint = { tiles?.let { if (it.hint()) version++ } },
                         onSwitchMode = { mode = if (mode == InputMode.TILES) InputMode.KEYBOARD else InputMode.TILES },
                         onCheck = {
@@ -535,7 +531,6 @@ private fun androidx.compose.foundation.layout.ColumnScope.sessionContent(
                                 val tile = tiles.tiles[source]
                                 WordChip(
                                     text = tile.text,
-                                    locked = pos < tiles.freeCount,
                                     onClick = { onUnpick(pos) },
                                 )
                             }
@@ -689,17 +684,12 @@ private fun GradeFeedback(diff: DiffResult, card: ReviewCard) {
     }
 }
 
-/** A tappable word tile with the pressed-edge look. */
+/**
+ * A tappable word tile with the pressed-edge look. Width hugs the word so the bank flows
+ * across the line instead of one tile per row.
+ */
 @Composable
-private fun WordChip(
-    text: String,
-    onClick: () -> Unit,
-    locked: Boolean = false,
-) {
-    val container = animateColorAsState(
-        targetValue = if (locked) duoBorder().copy(alpha = 0.55f) else duoCardBg(),
-        label = "chipBg",
-    ).value
+private fun WordChip(text: String, onClick: () -> Unit) {
     val edge = duoBorder()
     Box(
         modifier = Modifier
@@ -707,16 +697,14 @@ private fun WordChip(
             .padding(bottom = 3.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(edge)
-            .clickable(enabled = !locked, onClick = onClick),
+            .clickable(onClick = onClick),
         contentAlignment = Alignment.TopCenter,
     ) {
         Box(
-            // Hug the word instead of filling the row: tiles flow across the line like
-            // Duolingo's word bank, so a sentence fits in a couple of rows.
             modifier = Modifier
                 .height(45.dp)
                 .clip(RoundedCornerShape(12.dp))
-                .background(container)
+                .background(duoCardBg())
                 .padding(horizontal = 14.dp),
             contentAlignment = Alignment.Center,
         ) {
@@ -724,7 +712,7 @@ private fun WordChip(
                 text = text,
                 fontSize = 17.sp,
                 fontWeight = FontWeight.Medium,
-                color = if (locked) duoTextMuted() else MaterialTheme.colorScheme.onSurface,
+                color = MaterialTheme.colorScheme.onSurface,
             )
         }
     }
