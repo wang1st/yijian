@@ -25,6 +25,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Row
@@ -292,16 +293,18 @@ internal fun SectionTag(text: String, color: Color) {
 @Composable
 internal fun LessonProgressBar(progress: Float, label: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
+        BoxWithConstraints(
             modifier = Modifier
                 .weight(1f)
                 .height(16.dp)
                 .clip(RoundedCornerShape(8.dp))
                 .background(if (isSystemInDarkTheme()) Color(0xFF2E3034) else DuoSwan),
         ) {
+            // Explicit dp width from the measured constraint: a fractional fillMaxWidth inside a
+            // weighted Box resolves against an unbounded width and renders nothing.
             Box(
                 modifier = Modifier
-                    .fillMaxWidth(progress.coerceIn(0f, 1f))
+                    .width(maxWidth * progress.coerceIn(0f, 1f))
                     .fillMaxHeight()
                     .clip(RoundedCornerShape(8.dp))
                     .background(DuoGreen)
