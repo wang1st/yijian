@@ -57,6 +57,7 @@ internal fun duoBorder(): Color =
     if (isSystemInDarkTheme()) Color(0xFF33353A) else Color(0xFFE5E5E5)
 
 /** A border dark enough to read as an interactive control, not as a divider. */
+@Composable
 internal fun choiceBorder(): Color =
     if (isSystemInDarkTheme()) Color(0xFF4A4D53) else Color(0xFFD0D0D0)
 
