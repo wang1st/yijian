@@ -46,6 +46,7 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import dev.patrickgold.florisboard.R
 import dev.patrickgold.florisboard.app.apptheme.FlorisAppTheme
@@ -235,6 +236,14 @@ class FlorisAppActivity : ComponentActivity() {
                         startDestination = if (isImeSetUp) Routes.Main.Home::class else Routes.Setup.Screen::class,
                     )
                     PreviewKeyboardField(previewFieldController)
+                    // Clearing focus when the page changes keeps the soft keyboard from
+                    // hovering over the newly opened page (e.g. switching tabs after typing
+                    // in the preview field).
+                    val backStackEntry by navController.currentBackStackEntryAsState()
+                    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+                    LaunchedEffect(backStackEntry?.destination?.route) {
+                        focusManager.clearFocus()
+                    }
                 }
             }
         }

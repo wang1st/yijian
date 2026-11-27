@@ -55,16 +55,15 @@ object InputMethodUtils {
     }
 
     fun isFlorisboardSelected(context: Context): Boolean {
-        return if (AndroidVersion.ATLEAST_API34_U) {
-            context.systemServiceOrNull(InputMethodManager::class)
-                ?.currentInputMethodInfo
-                ?.packageName == BuildConfig.APPLICATION_ID
-        } else {
-            val selectedIme = AndroidSettings.Secure.getString(
-                context, Settings.Secure.DEFAULT_INPUT_METHOD
-            )
-            selectedIme != null && parseIsFlorisboardSelected(context, selectedIme)
-        }
+        // The secure setting is the authoritative "which IME is selected" value on every
+        // API level. InputMethodManager.currentInputMethodInfo is NOT: it reports the IME of
+        // the *current input session*, and returns another IME (or null) while no text field
+        // is focused, which made yijian's home screen claim it was not the default IME even
+        // when it was.
+        val selectedIme = AndroidSettings.Secure.getString(
+            context, Settings.Secure.DEFAULT_INPUT_METHOD
+        ) ?: return false
+        return parseIsFlorisboardSelected(context, selectedIme)
     }
 
     @Composable

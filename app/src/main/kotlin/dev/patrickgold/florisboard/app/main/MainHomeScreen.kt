@@ -90,7 +90,9 @@ fun MainHomeScreen() {
 
     FlorisScreenNg(
         title = "译键",
-        previewFieldVisible = true,
+        // The preview keyboard strip would sit right on top of the bottom navigation;
+        // the settings tab is where typing is tested.
+        previewFieldVisible = false,
         navigationIconVisible = false,
         mainNavigationVisible = true,
         compactAppBar = true,
