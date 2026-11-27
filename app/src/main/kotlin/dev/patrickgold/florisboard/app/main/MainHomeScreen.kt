@@ -171,9 +171,9 @@ fun MainHomeScreen() {
                     .padding(top = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                StatusPill("🔥", "${s.streakDays} 天", "连续")
-                StatusPill("⚡", "${s.xpToday} XP", "今日")
-                StatusPill("🎯", "${s.accuracyToday}%", "今天正确率")
+                StatusPill("🔥", "${s.streakDays} 天", "连续", Modifier.weight(1f))
+                StatusPill("⚡", "${s.xpToday} XP", "今日", Modifier.weight(1f))
+                StatusPill("🎯", "${s.accuracyToday}%", "正确率", Modifier.weight(1f))
             }
 
             // The ring: how far through today's target am I?
@@ -313,11 +313,16 @@ fun MainHomeScreen() {
 }
 
 @Composable
-private fun StatusPill(emoji: String, value: String, label: String) {
+private fun StatusPill(
+    emoji: String,
+    value: String,
+    label: String,
+    modifier: Modifier = Modifier,
+) {
     Card(
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = cardBg()),
-        modifier = Modifier.weight(1f),
+        modifier = modifier,
     ) {
         Column(
             modifier = Modifier.padding(vertical = 10.dp).fillMaxWidth(),
