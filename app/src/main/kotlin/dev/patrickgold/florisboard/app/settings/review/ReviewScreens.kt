@@ -84,6 +84,15 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.compose.material.icons.outlined.VolumeUp
+import dev.patrickgold.florisboard.app.FlorisPreferenceStore
+import dev.patrickgold.florisboard.ime.translation.AudioPlayer
+import dev.patrickgold.florisboard.ime.translation.SpeechClient
+import dev.patrickgold.florisboard.lib.devtools.flogError
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.withContext
 
 // ---- Duolingo-inspired palette ------------------------------------------------------
 
@@ -347,12 +356,19 @@ fun ReviewPracticeScreen() {
     var goodCount by remember { mutableIntStateOf(0) }
     var aiComment by remember { mutableStateOf<String?>(null) }
     var aiChecking by remember { mutableStateOf(false) }
+    var exercise by remember { mutableStateOf<PreparedExercise?>(null) }
+    var picked by remember { mutableStateOf<Choice?>(null) }
 
     fun startCard(card: ReviewCard) {
+        // Each card comes back in a shape chosen from how well it is known: recognition
+        // exercises while new, production and proofreading once it is familiar.
+        exercise = ExerciseFactory.prepare(card, queue.filter { it.id != card.id })
+        picked = null
         val wordCount = Regex("[A-Za-z0-9']+").findAll(card.entry.corrected).count()
         // Very long sentences are easier to type than to tap out tile by tile.
-        tiles = if (wordCount in 2..16) TileState(card.entry.corrected) else null
-        if (tiles == null) mode = InputMode.KEYBOARD
+        val isRecall = exercise?.type == ExerciseType.RECALL
+        tiles = if (isRecall && wordCount in 2..16) TileState(card.entry.corrected) else null
+        if (isRecall && tiles == null) mode = InputMode.KEYBOARD
         typed = ""
         diff = null
         aiComment = null
@@ -394,6 +410,23 @@ fun ReviewPracticeScreen() {
                     val card = queue[index]
                     sessionContent(
                         card = card,
+                        exercise = exercise,
+                        picked = picked,
+                        onPickChoice = { choice ->
+                            if (phase == Phase.QUESTION) {
+                                picked = choice
+                                // Choice questions are graded the moment an option is tapped:
+                                // there is nothing to assemble and no diff to compute.
+                                val ex = exercise ?: return@sessionContent
+                                diff = null
+                                aiComment = if (choice.correct) {
+                                    "答对了：${ex.answer}"
+                                } else {
+                                    "正确答案是：${ex.answer}"
+                                }
+                                phase = Phase.GRADED
+                            }
+                        },
                         index = index,
                         total = queue.size,
                         tiles = tiles,
@@ -474,6 +507,9 @@ fun ReviewPracticeScreen() {
 @Composable
 private fun androidx.compose.foundation.layout.ColumnScope.sessionContent(
     card: ReviewCard,
+    exercise: PreparedExercise?,
+    picked: Choice?,
+    onPickChoice: (Choice) -> Unit,
     index: Int,
     total: Int,
     tiles: TileState?,
@@ -523,18 +559,47 @@ private fun androidx.compose.foundation.layout.ColumnScope.sessionContent(
         ) {
             Column(modifier = Modifier.padding(18.dp)) {
                 Text(
-                    text = "把这句话翻回英文",
+                    text = exercise?.type?.hint ?: "把这句话翻回英文",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     color = DuoBlue,
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                Text(text = card.entry.translation, fontSize = 21.sp, lineHeight = 30.sp)
+                if (exercise?.type == ExerciseType.LISTEN) {
+                    // The prompt is audio: speak it on arrival, and offer a replay button.
+                    LaunchedEffect(exercise.prompt) { speakSentence(exercise.prompt) }
+                    ListenPrompt(exercise.prompt)
+                } else {
+                    Text(
+                        text = exercise?.prompt ?: card.entry.translation,
+                        fontSize = 21.sp,
+                        lineHeight = 30.sp,
+                    )
+                }
             }
         }
         Spacer(modifier = Modifier.height(14.dp))
 
-        if (tiles != null && mode == InputMode.TILES) {
+        // Choice-based exercises replace the assembly area entirely.
+        val choices = exercise?.choices.orEmpty()
+        if (choices.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                choices.forEach { choice ->
+                    val state = when {
+                        phase != Phase.GRADED -> ChoiceState.IDLE
+                        choice.correct -> ChoiceState.CORRECT
+                        picked === choice -> ChoiceState.WRONG
+                        else -> ChoiceState.IDLE
+                    }
+                    ChoiceRow(text = choice.text, state = state) {
+                        if (phase == Phase.QUESTION) onPickChoice(choice)
+                    }
+                }
+            }
+        }
+
+        val isRecall = exercise == null || exercise.type == ExerciseType.RECALL
+        if (isRecall && tiles != null && mode == InputMode.TILES) {
             // Answer line: placed words
             Box(
                 modifier = Modifier
@@ -595,7 +660,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.sessionContent(
                     }
                 }
             }
-        } else {
+        } else if (isRecall) {
             OutlinedTextField(
                 value = typed,
                 onValueChange = onTyped,
@@ -613,13 +678,20 @@ private fun androidx.compose.foundation.layout.ColumnScope.sessionContent(
 
         if (phase == Phase.GRADED && diff != null) {
             Spacer(modifier = Modifier.height(12.dp))
-            GradeFeedback(diff = diff, card = card, aiComment = aiComment, aiChecking = aiChecking)
+            GradeFeedback(
+                diff = diff,
+                card = card,
+                aiComment = aiComment,
+                aiChecking = aiChecking,
+                wasCorrect = picked?.correct == true,
+            )
         }
     }
 
     // Sticky bottom action bar, kept clear of the bottom navigation's gesture area.
     Spacer(modifier = Modifier.height(10.dp))
-    if (phase == Phase.QUESTION) {
+    val isChoiceExercise = exercise?.choices?.isNotEmpty() == true
+    if (phase == Phase.QUESTION && !isChoiceExercise) {
         val canCheck = if (mode == InputMode.TILES) tiles?.isComplete == true else typed.isNotBlank()
         DuoButton(
             text = "检查",
@@ -630,7 +702,11 @@ private fun androidx.compose.foundation.layout.ColumnScope.sessionContent(
     } else if (phase == Phase.GRADED && diff != null) {
         DuoButton(
             text = "继续",
-            onClick = { onGrade(diff.suggestedGrade) },
+            onClick = {
+                val suggested = diff?.suggestedGrade
+                    ?: if (picked?.correct == true) Grade.GOOD else Grade.FORGOT
+                onGrade(suggested)
+            },
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(modifier = Modifier.height(6.dp))
@@ -649,12 +725,13 @@ private fun androidx.compose.foundation.layout.ColumnScope.sessionContent(
 /** Green/red feedback panel shown after checking, Douolingo style. */
 @Composable
 private fun GradeFeedback(
-    diff: DiffResult,
+    diff: DiffResult?,
     card: ReviewCard,
     aiComment: String? = null,
     aiChecking: Boolean = false,
+    wasCorrect: Boolean = false,
 ) {
-    val perfect = diff.similarity >= 90
+    val perfect = if (diff != null) diff.similarity >= 90 else wasCorrect
     val accent = if (perfect) DuoGreen else DuoRed
     val bg = if (isSystemInDarkTheme()) {
         accent.copy(alpha = 0.14f)
@@ -679,7 +756,7 @@ private fun GradeFeedback(
             Text(
                 text = when {
                     perfect -> "太棒了！"
-                    diff.similarity >= 60 -> "接近了，注意细节"
+                    diff != null && diff.similarity >= 60 -> "接近了，注意细节"
                     else -> "再练一次会更好"
                 },
                 fontSize = 17.sp,
@@ -687,22 +764,26 @@ private fun GradeFeedback(
                 color = accent,
             )
             Spacer(modifier = Modifier.weight(1f))
-            Text("${diff.similarity}%", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = accent)
-        }
-        Spacer(modifier = Modifier.height(10.dp))
-        // Correct sentence, per-word hit/miss
-        val annotated: AnnotatedString = buildAnnotatedString {
-            diff.targetWords.forEachIndexed { i, w ->
-                if (i > 0) append(" ")
-                withStyle(
-                    SpanStyle(
-                        color = if (w.matched) MaterialTheme.colorScheme.onSurface else DuoRed,
-                        fontWeight = if (w.matched) FontWeight.Normal else FontWeight.Bold,
-                    )
-                ) { append(w.text) }
+            if (diff != null) {
+                Text("${diff.similarity}%", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = accent)
             }
         }
-        Text(text = annotated, fontSize = 17.sp, lineHeight = 25.sp)
+        Spacer(modifier = Modifier.height(10.dp))
+        if (diff != null) {
+            // Correct sentence, per-word hit/miss
+            val annotated: AnnotatedString = buildAnnotatedString {
+                diff.targetWords.forEachIndexed { i, w ->
+                    if (i > 0) append(" ")
+                    withStyle(
+                        SpanStyle(
+                            color = if (w.matched) MaterialTheme.colorScheme.onSurface else DuoRed,
+                            fontWeight = if (w.matched) FontWeight.Normal else FontWeight.Bold,
+                        )
+                    ) { append(w.text) }
+                }
+            }
+            Text(text = annotated, fontSize = 17.sp, lineHeight = 25.sp)
+        }
         if (aiChecking) {
             Spacer(modifier = Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -920,5 +1001,83 @@ private fun HistoryCard(card: ReviewCard) {
                 }
             }
         }
+    }
+}
+private val prefs by FlorisPreferenceStore
+
+// ---- choice-based exercise UI -------------------------------------------------------
+
+/** Visual state of a multiple-choice option. */
+enum class ChoiceState { IDLE, CORRECT, WRONG }
+
+/** One tappable answer option, styled like Duolingo's bordered answer cards. */
+@Composable
+internal fun ChoiceRow(text: String, state: ChoiceState, onClick: () -> Unit) {
+    val border = when (state) {
+        ChoiceState.IDLE -> duoBorder()
+        ChoiceState.CORRECT -> DuoGreen
+        ChoiceState.WRONG -> DuoRed
+    }
+    val bg = when (state) {
+        ChoiceState.IDLE -> duoCardBg()
+        ChoiceState.CORRECT -> DuoGreen.copy(alpha = if (isSystemInDarkTheme()) 0.18f else 0.10f)
+        ChoiceState.WRONG -> DuoRed.copy(alpha = if (isSystemInDarkTheme()) 0.18f else 0.10f)
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(bg)
+            .border(2.dp, border, RoundedCornerShape(14.dp))
+            .clickable(enabled = state == ChoiceState.IDLE, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Text(
+            text = text,
+            fontSize = 16.sp,
+            lineHeight = 22.sp,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+/** Listening prompt: a big speaker button plus a replay hint. */
+@Composable
+internal fun ListenPrompt(sentence: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(64.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(DuoBlue.copy(alpha = 0.15f))
+                .clickable { speakSentence(sentence) },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Outlined.VolumeUp, contentDescription = "再听一次", tint = DuoBlue)
+        }
+        Spacer(modifier = Modifier.width(14.dp))
+        Text(
+            text = "点喇叭可以再听一次",
+            fontSize = 13.sp,
+            color = duoTextMuted(),
+        )
+    }
+}
+
+/** Speaks [text] through the existing TTS pipeline. Fire-and-forget. */
+internal fun speakSentence(text: String) {
+    if (text.isBlank()) return
+    // Synthesis blocks, playback does not: fetch on IO, then play on Main.
+    CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+        runCatching {
+            val client = SpeechClient(prefs.translation.baseUrl.get(), prefs.translation.apiKey.get())
+            val wav = client.synthesize(text)
+            withContext(Dispatchers.Main) { AudioPlayer.play(wav) }
+        }.onFailure { flogError { "yijian exercise tts: ${it.message}" } }
     }
 }
