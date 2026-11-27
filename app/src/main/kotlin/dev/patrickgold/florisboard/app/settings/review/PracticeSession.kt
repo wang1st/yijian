@@ -20,6 +20,8 @@ import androidx.compose.runtime.mutableStateOf
 import dev.patrickgold.florisboard.ime.translation.review.DiffResult
 import dev.patrickgold.florisboard.ime.translation.review.Grade
 import dev.patrickgold.florisboard.ime.translation.review.ReviewAi
+import dev.patrickgold.florisboard.ime.translation.review.WordDiff
+import dev.patrickgold.florisboard.ime.translation.review.MistakeTracker
 import dev.patrickgold.florisboard.ime.translation.review.ReviewCard
 
 /**
@@ -188,10 +190,9 @@ class PracticeSession(private val host: SessionHost) {
     suspend fun check(answer: String) {
         if (state.phase != SessionPhase.QUESTION) return
         val card = state.card ?: return
-        val local = dev.patrickgold.florisboard.ime.translation.review.WordDiff
-            .grade(card.entry.corrected, answer)
+        val local = WordDiff.grade(card.entry.corrected, answer)
         state = state.copy(diff = local, aiComment = null, phase = SessionPhase.GRADED)
-        if (!dev.patrickgold.florisboard.ime.translation.review.ReviewAi.shouldAskAi(local.similarity)) return
+        if (!ReviewAi.shouldAskAi(local.similarity)) return
         state = state.copy(aiChecking = true)
         val verdict = host.gradeAi(card.entry.corrected, answer, card.entry.translation)
         val comment = when {
@@ -210,8 +211,8 @@ class PracticeSession(private val host: SessionHost) {
         host.recordGrade(card.id, grade)
         // Feed the mistake-kind tracker: this is what turns review activity into a visible
         // "this error type is receding" number.
-        dev.patrickgold.florisboard.ime.translation.review.MistakeTracker.record(
-            kind = dev.patrickgold.florisboard.ime.translation.review.MistakeTracker.kindOf(card),
+        MistakeTracker.record(
+            kind = MistakeTracker.kindOf(card),
             correct = grade == Grade.GOOD,
         )
         val nextIndex = state.index + 1
