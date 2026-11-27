@@ -99,6 +99,7 @@ import kotlinx.coroutines.withContext
 internal val DuoGreen = Color(0xFF58CC02)
 private val DuoGreenShade = Color(0xFF46A302)
 internal val DuoBlue = Color(0xFF1CB0F6)
+internal val DuoGold = Color(0xFFFFC800)
 private val DuoBlueShade = Color(0xFF1899D6)
 private val DuoRed = Color(0xFFFF4B4B)
 private val DuoRedShade = Color(0xFFD33131)
@@ -360,10 +361,26 @@ fun ReviewPracticeScreen() {
     var aiChecking by remember { mutableStateOf(false) }
     var exercise by remember { mutableStateOf<PreparedExercise?>(null) }
     var picked by remember { mutableStateOf<Choice?>(null) }
+    // Exercise written by the model, with the point it drills put front and centre.
+    var aiExercise by remember { mutableStateOf<ReviewAi.AiExercise?>(null) }
+    var preparing by remember { mutableStateOf(false) }
 
     fun startCard(card: ReviewCard) {
-        // Each card comes back in a shape chosen from how well it is known: recognition
-        // exercises while new, production and proofreading once it is familiar.
+        // The model authors the exercise: it knows what a plausible mistake looks like, and
+        // it can target the specific error the learner already made on this sentence.
+        aiExercise = null
+        preparing = true
+        scope.launch {
+            aiExercise = ReviewAi.makeExercise(
+                english = card.entry.corrected.ifBlank { card.entry.original },
+                chinese = card.entry.translation,
+                box = card.box,
+                isNew = card.isNew,
+                knownMistakes = card.entry.corrections.map { "${it.wrong} → ${it.right}" },
+            )
+            preparing = false
+        }
+        // Local generation stands in until the model answers (and if it cannot).
         exercise = ExerciseFactory.prepare(card, queue.filter { it.id != card.id })
         picked = null
         val wordCount = Regex("[A-Za-z0-9']+").findAll(card.entry.corrected).count()
@@ -413,7 +430,19 @@ fun ReviewPracticeScreen() {
                     sessionContent(
                         card = card,
                         exercise = exercise,
+                        aiExercise = aiExercise,
+                        preparing = preparing,
                         picked = picked,
+                        onPickAiChoice = { choice ->
+                            if (phase == Phase.QUESTION) {
+                                picked = choice
+                                diff = null
+                                val answerText = aiExercise?.answer ?: card.entry.corrected
+                                aiComment = if (choice.correct) "答对了：$answerText"
+                                else "正确答案：$answerText"
+                                phase = Phase.GRADED
+                            }
+                        },
                         onPickChoice = { choice ->
                             if (phase == Phase.QUESTION) {
                                 picked = choice
@@ -512,8 +541,11 @@ fun ReviewPracticeScreen() {
 private fun androidx.compose.foundation.layout.ColumnScope.sessionContent(
     card: ReviewCard,
     exercise: PreparedExercise?,
+    aiExercise: ReviewAi.AiExercise?,
+    preparing: Boolean,
     picked: Choice?,
     onPickChoice: (Choice) -> Unit,
+    onPickAiChoice: (Choice) -> Unit,
     index: Int,
     total: Int,
     tiles: TileState?,
@@ -556,48 +588,87 @@ private fun androidx.compose.foundation.layout.ColumnScope.sessionContent(
     Spacer(modifier = Modifier.height(18.dp))
 
     Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-        // Prompt: the Chinese sentence to translate back
+        // The mistake this sentence is about, stated before the question: the point of the
+        // exercise is to burn this specific error in, not to admire the sentence.
+        val mistakes = card.entry.corrections
+        if (mistakes.isNotEmpty()) {
+            MistakeBanner(
+                wrong = mistakes.first().wrong,
+                right = mistakes.first().right,
+                why = mistakes.first().why,
+                extra = mistakes.size - 1,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+
+        // Prompt card, from the model when it answered, from local generation otherwise.
+        val type = aiExercise?.type ?: exercise?.type?.name ?: "RECALL"
+        val isListen = type == "LISTEN"
+        val promptText = aiExercise?.prompt ?: exercise?.prompt ?: card.entry.translation
+        val speakText = aiExercise?.speak ?: evidenceSpeak(card)
         Card(
             shape = SheetShape,
             colors = CardDefaults.cardColors(containerColor = duoCardBg()),
             modifier = Modifier.fillMaxWidth(),
         ) {
             Column(modifier = Modifier.padding(18.dp)) {
-                Text(
-                    text = exercise?.type?.hint ?: "把这句话翻回英文",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = DuoBlue,
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                if (exercise?.type == ExerciseType.LISTEN) {
-                    // The prompt is audio: speak it on arrival, and offer a replay button.
-                    LaunchedEffect(exercise.prompt) { speakSentence(exercise.prompt) }
-                    ListenPrompt(exercise.prompt)
-                } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = exercise?.prompt ?: card.entry.translation,
-                        fontSize = 21.sp,
-                        lineHeight = 30.sp,
+                        text = typeHint(type),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = DuoBlue,
                     )
+                    if (preparing) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        CircularProgressIndicator(
+                            color = DuoBlue,
+                            strokeWidth = 1.5.dp,
+                            modifier = Modifier.size(11.dp),
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                if (isListen) {
+                    val spoken = aiExercise?.speak ?: exercise?.prompt ?: card.entry.corrected
+                    LaunchedEffect(spoken) { speakSentence(spoken) }
+                    ListenPrompt(spoken)
+                } else {
+                    Text(text = promptText, fontSize = 21.sp, lineHeight = 30.sp)
                 }
             }
         }
         Spacer(modifier = Modifier.height(14.dp))
 
         // Choice-based exercises replace the assembly area entirely.
-        val choices = exercise?.choices.orEmpty()
-        if (choices.isNotEmpty()) {
+        val aiChoices = aiExercise?.choices.orEmpty()
+        val localChoices = exercise?.choices.orEmpty()
+        val showChoices = aiChoices.isNotEmpty() || localChoices.isNotEmpty()
+        if (showChoices) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                choices.forEach { choice ->
-                    val state = when {
-                        phase != Phase.GRADED -> ChoiceState.IDLE
-                        choice.correct -> ChoiceState.CORRECT
-                        picked === choice -> ChoiceState.WRONG
-                        else -> ChoiceState.IDLE
+                if (aiChoices.isNotEmpty()) {
+                    aiChoices.forEachIndexed { i, (text, correct) ->
+                        val state = when {
+                            phase != Phase.GRADED -> ChoiceState.IDLE
+                            correct -> ChoiceState.CORRECT
+                            picked?.text == text -> ChoiceState.WRONG
+                            else -> ChoiceState.IDLE
+                        }
+                        ChoiceRow(text = text, state = state) {
+                            if (phase == Phase.QUESTION) onPickAiChoice(Choice(text, correct))
+                        }
                     }
-                    ChoiceRow(text = choice.text, state = state) {
-                        if (phase == Phase.QUESTION) onPickChoice(choice)
+                } else {
+                    localChoices.forEach { choice ->
+                        val state = when {
+                            phase != Phase.GRADED -> ChoiceState.IDLE
+                            choice.correct -> ChoiceState.CORRECT
+                            picked === choice -> ChoiceState.WRONG
+                            else -> ChoiceState.IDLE
+                        }
+                        ChoiceRow(text = choice.text, state = state) {
+                            if (phase == Phase.QUESTION) onPickChoice(choice)
+                        }
                     }
                 }
             }
@@ -696,7 +767,8 @@ private fun androidx.compose.foundation.layout.ColumnScope.sessionContent(
 
     // Sticky bottom action bar, kept clear of the bottom navigation's gesture area.
     Spacer(modifier = Modifier.height(10.dp))
-    val isChoiceExercise = exercise?.choices?.isNotEmpty() == true
+    val isChoiceExercise = exercise?.choices?.isNotEmpty() == true ||
+        aiExercise?.choices?.isNotEmpty() == true
     if (phase == Phase.QUESTION && !isChoiceExercise) {
         val canCheck = if (mode == InputMode.TILES) tiles?.isComplete == true else typed.isNotBlank()
         DuoButton(
@@ -1093,5 +1165,69 @@ internal fun speakSentence(text: String) {
             val wav = client.synthesize(text)
             withContext(Dispatchers.Main) { AudioPlayer.play(wav) }
         }.onFailure { flogError { "yijian exercise tts: ${it.message}" } }
+    }
+}
+
+/** Human-readable name for an exercise type from either generator. */
+internal fun typeHint(type: String): String = when (type) {
+    "CLOZE" -> "选出正确的词填进空格"
+    "LISTEN" -> "听一句英文，选出你听到的内容"
+    "FIX_ERROR" -> "这句话有一处错，选出正确版本"
+    "MEANING" -> "这句话是什么意思"
+    else -> "把这句话翻回英文"
+}
+
+/** Always-available fallback prompt for the listening exercise. */
+private fun evidenceSpeak(card: ReviewCard): String =
+    card.entry.corrected.ifBlank { card.entry.original }
+
+/**
+ * Shows the error this sentence is about, before the question is answered.
+ * The learner is meant to fail this point a few times and then stop failing it, so naming the
+ * error up front is the whole purpose of the card.
+ */
+@Composable
+internal fun MistakeBanner(wrong: String, right: String, why: String, extra: Int) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(DuoGold.copy(alpha = if (isSystemInDarkTheme()) 0.18f else 0.22f))
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("⚠", fontSize = 13.sp)
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = "你的易错点",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+            )
+            if (extra > 0) {
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "+$extra",
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "$wrong  →  $right",
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        if (why.isNotBlank()) {
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = why,
+                fontSize = 12.sp,
+                lineHeight = 17.sp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+            )
+        }
     }
 }

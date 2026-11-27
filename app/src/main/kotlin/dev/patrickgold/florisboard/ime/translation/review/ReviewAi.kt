@@ -233,4 +233,94 @@ object ReviewAi {
         }.onFailure { flogError { "yijian ai explain: ${it.message}" } }
             .getOrDefault(emptyMap())
     }
+
+    // ---- AI-authored exercises ---------------------------------------------------------
+
+    /** One exercise written by the model, ready to render. */
+    data class AiExercise(
+        val type: String,
+        /** What the learner sees (Chinese prompt, sentence to fix, or "听写" placeholder). */
+        val prompt: String,
+        /** Text to speak for LISTEN, empty otherwise. */
+        val speak: String,
+        val choices: List<Pair<String, Boolean>>,
+        /** The sentence as it should read, shown after answering. */
+        val answer: String,
+        /** One line explaining the point being practised. */
+        val tip: String,
+    )
+
+    /**
+     * Has the model write the exercise itself, choosing the type that suits the card.
+     *
+     * Local generation could only shuffle words the sentence already had, which produced
+     * distractors that were obviously wrong (same-sentence neighbours) and errors that were
+     * mechanical (dropped article). The model knows what a plausible mistake looks like, so
+     * every type is authored here.
+     *
+     * @param box how well the card is known; new cards get recognition tasks only.
+     */
+    suspend fun makeExercise(
+        english: String,
+        chinese: String,
+        box: Int,
+        isNew: Boolean,
+        knownMistakes: List<String>,
+    ): AiExercise? {
+        if (!isEnabled()) return null
+        val allowed = if (isNew || box <= 0) {
+            "CLOZE、MEANING、LISTEN"
+        } else if (box <= 2) {
+            "RECALL、CLOZE、LISTEN、MEANING"
+        } else {
+            "RECALL、FIX_ERROR、LISTEN"
+        }
+        val system = """你是英语老师，为学生出一道复习题。学生是中文母语者，水平中等偏下。
+可选题型（只允许这几种）：RECALL（看中文写英文）、CLOZE（句中挖一个词，四选一）、
+LISTEN（听英文选正确文本）、FIX_ERROR（句中有一处错误，选出正确版本）、MEANING（看英文选正确中文）。
+
+各题型要求：
+- CLOZE：从原句中挖掉一个**实词**（名词/动词/形容词），用 ____ 代替；给出 4 个选项，干扰项要和原文语境相配、长度相近，让学生必须靠语法或搭配判断，不能一眼排除。
+- LISTEN：把原句作为正确选项，再写 2 个**同主题、长度相近、有细微差别**的干扰句（换时态、换介词、换单复数），不要写明显无关的句子。
+- FIX_ERROR：在原句基础上制造**一个**学生常犯的错误（缺冠词、第三人称单数少 s、时态错、介词错），给出错误版和正确版两个选项。
+- MEANING：中文译文作为正确选项，再写 2 个意思接近但不同的干扰译文。
+- RECALL：不需要选项，prompt 填中文，answer 填英文。
+
+如果学生以前在这句上犯过错，出题要针对同样的点。
+
+严格只输出 JSON：
+{"type":"题型","prompt":"学生看到的内容","speak":"需要朗读的英文（仅 LISTEN，其他空字符串）","choices":[{"text":"选项","correct":true或false}],"answer":"正确答案全文","tip":"一句话考点提示，15字以内"}"""
+        val user = buildString {
+            append("原句英文：$english\n")
+            append("中文译文：$chinese\n")
+            append("允许的题型：$allowed\n")
+            if (knownMistakes.isNotEmpty()) {
+                append("学生以前在这句上的错误：${knownMistakes.joinToString("；")}\n")
+            }
+        }
+        return runCatching {
+            val o = jsonObject(chat(system, user, maxTokens = 900))
+            val type = o.optString("type").uppercase().trim()
+            if (type !in setOf("RECALL", "CLOZE", "LISTEN", "FIX_ERROR", "MEANING")) return@runCatching null
+            val arr = o.optJSONArray("choices") ?: JSONArray()
+            val choices = (0 until arr.length()).mapNotNull { i ->
+                arr.optJSONObject(i)?.let { c ->
+                    val text = c.optString("text").trim()
+                    if (text.isBlank()) null else text to c.optBoolean("correct", false)
+                }
+            }
+            val answer = o.optString("answer").ifBlank { english }
+            // A choice exercise with no correct option is unusable.
+            if (type != "RECALL" && (choices.size < 2 || choices.none { it.second })) return@runCatching null
+            AiExercise(
+                type = type,
+                prompt = o.optString("prompt").ifBlank { chinese },
+                speak = o.optString("speak").ifBlank { english },
+                choices = choices,
+                answer = answer,
+                tip = o.optString("tip").trim(),
+            )
+        }.onFailure { flogError { "yijian ai exercise: ${it.message}" } }.getOrNull()
+    }
+
 }
