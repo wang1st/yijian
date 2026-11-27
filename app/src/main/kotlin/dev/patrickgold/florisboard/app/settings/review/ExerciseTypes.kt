@@ -220,3 +220,22 @@ object ExerciseFactory {
         return PreparedExercise(ExerciseType.MEANING, card, english, choices, chinese)
     }
 }
+
+/**
+ * Shuffled word bank for the recall exercise: which tiles exist, and which have been placed in
+ * the answer line so far. View state, so it stays out of [PracticeSession].
+ */
+class TileState(val target: String) {
+    private val words: List<String> =
+        Regex("[A-Za-z0-9']+").findAll(target).map { it.value }.toList()
+
+    /** Display order is shuffled; the index is the tile's identity once placed. */
+    val tiles: List<String> = words.shuffled()
+
+    /** Indices into [tiles], in the order the learner tapped them. */
+    val placed = mutableListOf<Int>()
+
+    val isComplete: Boolean get() = placed.size == tiles.size
+
+    fun answer(): String = placed.joinToString(" ") { tiles[it] }
+}
