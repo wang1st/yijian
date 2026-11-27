@@ -77,7 +77,7 @@ object MistakeTracker {
     private fun read(): MutableMap<String, KindState> {
         val map = mutableMapOf<String, KindState>()
         if (!stateFile.exists()) return map
-        runCatching {
+        runCatching<Unit> {
             val root = JSONObject(stateFile.readText())
             for (kind in root.keys()) {
                 val o = root.optJSONObject(kind) ?: continue
@@ -92,7 +92,8 @@ object MistakeTracker {
     }
 
     private fun write(map: Map<String, KindState>) {
-        runCatching {
+        // Explicit Unit so the block's type is unambiguous.
+        runCatching<Unit> {
             val root = JSONObject()
             for ((kind, s) in map) {
                 root.put(kind, JSONObject().apply {
