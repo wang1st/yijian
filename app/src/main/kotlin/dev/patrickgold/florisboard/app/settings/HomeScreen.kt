@@ -54,7 +54,9 @@ fun HomeScreen() {
     FlorisScreenNg(
         title = stringRes(R.string.settings__home__title),
         navigationIconVisible = false,
-        previewFieldVisible = true,
+        // The preview field is pointless in the tabbed shell: it steals focus and pops the
+        // keyboard on every visit, hiding the settings list it is meant to accompany.
+        previewFieldVisible = false,
         mainNavigationVisible = true,
         compactAppBar = true,
     ) { contentPadding ->
