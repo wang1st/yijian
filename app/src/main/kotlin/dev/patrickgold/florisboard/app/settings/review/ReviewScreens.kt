@@ -68,6 +68,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.patrickgold.florisboard.app.LocalNavController
@@ -207,7 +208,13 @@ internal fun DuoSecondaryButton(
 fun ReviewHomeScreen() {
     val navController = LocalNavController.current
     var snapshot by remember { mutableStateOf<ReviewSnapshot?>(null) }
-    LaunchedEffect(Unit) { snapshot = ReviewStore.snapshot() }
+    var recent by remember { mutableStateOf<List<ReviewCard>>(emptyList()) }
+    LaunchedEffect(Unit) {
+        snapshot = ReviewStore.snapshot()
+        // A few recent sentences give the page something to read below the fold, and
+        // remind the learner what they have been working on.
+        recent = ReviewStore.allCards().sortedByDescending { it.entry.timestamp }.take(3)
+    }
 
     FlorisScreenNg(
         title = "复习",
@@ -298,12 +305,44 @@ fun ReviewHomeScreen() {
                 }
             }
 
+            if (recent.isNotEmpty()) {
+                Text(
+                    text = "最近练过",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = duoTextMuted(),
+                    modifier = Modifier.padding(top = 20.dp, bottom = 8.dp),
+                )
+                recent.forEach { card ->
+                    Card(
+                        shape = SheetShape,
+                        colors = CardDefaults.cardColors(containerColor = duoCardBg()),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                    ) {
+                        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                            Text(
+                                text = card.entry.corrected.ifBlank { card.entry.original },
+                                fontSize = 15.sp,
+                                lineHeight = 21.sp,
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = card.entry.translation,
+                                fontSize = 12.sp,
+                                color = duoTextMuted(),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+            }
             Text(
                 text = "你平时用译键翻译过的句子会自动变成复习卡片，按 1 / 3 / 7 / 15 / 30 天的间隔重现；答错降级，明天重来。",
                 fontSize = 12.sp,
                 lineHeight = 18.sp,
                 color = duoTextMuted(),
-                modifier = Modifier.padding(top = 16.dp, bottom = 20.dp),
+                modifier = Modifier.padding(top = 12.dp, bottom = 20.dp),
             )
         }
     }
