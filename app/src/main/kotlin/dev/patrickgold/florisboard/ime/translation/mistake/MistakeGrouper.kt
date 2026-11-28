@@ -89,6 +89,13 @@ object MistakeGrouper {
 - 同一个语法规则下的不同句子算一个点（"I very like" 和 "I really very like" 都是 very 修饰动词）。
 - 明确不同的规则不要硬合并。
 
+关于 tag = 说法 的条目：
+- 这些**不是错误**。学生的句子本身对，只是母语者有更地道的说法。
+- 这类知识点要说清"什么时候该这么说"，而不是"你错在哪"。
+- label 写成"XX 更地道"的形式，如 "口语用 can't 代替 cannot"、"go back to 比 come back 更自然"。
+- kind 填 说法。
+- 如果多个说法条目属于同一类提升（如都是"口语缩写"），可以合并成一个点。
+
 严格只输出 JSON：
 {"points":[{"id":"...","kind":"语法","label":"...","correctForm":"...","explanation":"...","indices":[0,3]}]}""",
             user = listing,

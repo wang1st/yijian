@@ -30,7 +30,13 @@ package dev.patrickgold.florisboard.ime.translation.mistake
  */
 data class MistakePoint(
     val id: String,
-    /** 拼写 / 语法 / 用词 / 表达 */
+    /**
+     * 拼写 / 语法 / 用词 / 表达 for actual errors, or 说法 for an upgrade.
+     *
+     * 说法 is a different kind of lesson: the sentence was not wrong, a native speaker would
+     * simply have put it another way. It is worth reviewing precisely because the learner
+     * already gets the meaning across — the thing to learn is the phrasing, not the grammar.
+     */
     val kind: String,
     /** Short human label shown in the app, e.g. "very 不能修饰动词". */
     val label: String,

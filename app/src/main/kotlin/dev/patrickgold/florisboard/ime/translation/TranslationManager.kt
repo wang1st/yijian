@@ -695,13 +695,18 @@ class TranslationManager(
             raw.trim()
         }.filter { it.isNotBlank() }
         check(candidates.isNotEmpty()) { "模型没有给出译文" }
-        // Only sentences that actually needed fixing become practice material.
+        // A sentence becomes practice material when there is something to learn from it —
+        // which is not the same as "the sentence had errors".
         //
-        // A sentence the learner already phrased well has nothing to drill: putting it into the
-        // review queue would ask them to prove something they just demonstrated, and it would
-        // dilute the queue with cards that are already known. The rule is the sentence was
-        // wrong, not the sentence existed.
-        if (result.corrections.isNotEmpty()) {
+        // Two distinct cases both qualify:
+        //   corrections  the sentence was wrong
+        //   note         the sentence was right but a native speaker would have said it
+        //                differently; the note carries the better phrasing
+        //
+        // Excluding the second case would throw away the most useful material there is: the
+        // learner already communicates correctly, and the lesson is the upgrade. A sentence
+        // with neither is a sentence they already knew how to say, so it is not recorded.
+        if (result.corrections.isNotEmpty() || result.note.isNotBlank()) {
             runCatching {
                 teacher.record(
                     original = english,

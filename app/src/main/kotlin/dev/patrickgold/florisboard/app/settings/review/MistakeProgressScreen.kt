@@ -147,6 +147,7 @@ private fun PointRow(p: MistakePoint) {
             Text(
                 text = when {
                     p.mastered -> "已掌握"
+                    p.kind == "说法" -> "可选说法"
                     p.stubborn -> "还在反复"
                     p.correctStreak > 0 -> "连对 ${p.correctStreak}"
                     else -> "错过 ${p.occurrences} 次"

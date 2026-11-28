@@ -80,7 +80,9 @@ fun ReviewHomeScreen() {
     LaunchedEffect(Unit) {
         snapshot = ReviewStore.snapshot()
         recent = ReviewStore.allCards().sortedByDescending { it.entry.timestamp }.take(3)
-        weakPoints = runCatching {
+        // Explicit type parameter: runCatching's R cannot be inferred through the state
+        // property on the left-hand side.
+        weakPoints = runCatching<List<MistakePoint>> {
             MistakeStore.allPoints().filter { !it.mastered }
                 .sortedWith(compareByDescending<MistakePoint> { it.stubborn }.thenByDescending { it.occurrences })
         }.getOrDefault(emptyList())
@@ -150,6 +152,14 @@ fun ReviewHomeScreen() {
                     color = colors.ink,
                     modifier = Modifier.clickable {
                         navController.navigate(Routes.Settings.MistakeProgress)
+                    },
+                )
+                Text(
+                    text = "我的表达",
+                    style = type.body,
+                    color = colors.ink,
+                    modifier = Modifier.clickable {
+                        navController.navigate(Routes.Settings.Expressions)
                     },
                 )
             }

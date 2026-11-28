@@ -209,7 +209,31 @@ fun MistakePracticeScreen() {
                             )
                         } else {
                             val wrong = item.point.wrongForms.firstOrNull()
-                            if (wrong != null && item.point.correctForm.isNotBlank()) {
+                            val isUpgrade = item.point.kind == "说法"
+                            if (isUpgrade) {
+                                // An upgrade, not an error: show what was said and what a
+                                // native speaker would say, without a correction arrow that
+                                // implies the first was wrong.
+                                if (wrong != null) {
+                                    Text(
+                                        text = "你当时的说法",
+                                        style = type.label,
+                                        color = colors.inkMuted,
+                                    )
+                                    Spacer(modifier = Modifier.height(Space.xs))
+                                    Text(wrong, style = type.body, color = colors.ink)
+                                    Spacer(modifier = Modifier.height(Space.md))
+                                }
+                                if (item.point.correctForm.isNotBlank()) {
+                                    Text(
+                                        text = "更地道",
+                                        style = type.label,
+                                        color = colors.positive,
+                                    )
+                                    Spacer(modifier = Modifier.height(Space.xs))
+                                    Text(item.point.correctForm, style = type.title, color = colors.ink)
+                                }
+                            } else if (wrong != null && item.point.correctForm.isNotBlank()) {
                                 Text(
                                     text = "$wrong  →  ${item.point.correctForm}",
                                     style = type.title,

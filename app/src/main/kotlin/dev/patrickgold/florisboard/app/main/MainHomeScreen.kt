@@ -84,7 +84,7 @@ fun MainHomeScreen() {
     var focus by remember { mutableStateOf<MistakePoint?>(null) }
     LaunchedEffect(Unit) {
         snap = ReviewStore.snapshot()
-        focus = runCatching {
+        focus = runCatching<MistakePoint?> {
             MistakeStore.allPoints()
                 .filter { !it.mastered }
                 .sortedWith(
@@ -200,6 +200,14 @@ fun MainHomeScreen() {
                     modifier = Modifier.clickable { navController.navigate(Routes.Settings.ReviewPractice) },
                 )
             }
+
+            Spacer(modifier = Modifier.height(Space.md))
+            Text(
+                text = "练地道说法",
+                style = type.body,
+                color = colors.ink,
+                modifier = Modifier.clickable { navController.navigate(Routes.Settings.ExpressionPractice) },
+            )
 
             // Everything below is reference, set small enough not to compete.
             if (s != null) {

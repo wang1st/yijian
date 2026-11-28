@@ -150,7 +150,7 @@ object MistakeStore {
             if (!force && pointsFile.exists() && readPoints().isNotEmpty()) return@withLock 0
 
             val corrections = entries.flatMap { e ->
-                e.corrections.map { c ->
+                val fromErrors = e.corrections.map { c ->
                     MistakeGrouper.Sample(
                         sentence = e.original.ifBlank { e.corrected },
                         translation = e.translation,
@@ -161,6 +161,26 @@ object MistakeStore {
                         timestamp = e.timestamp,
                     )
                 }
+                // An entry with no corrections but a note is an upgrade, not a mistake: the
+                // sentence was right and the note carries a more idiomatic phrasing. Those
+                // are exactly the lessons worth repeating, so they enter as samples too,
+                // tagged 说法 so they are not mistaken for errors.
+                val fromNote = if (e.corrections.isEmpty() && e.note.isNotBlank()) {
+                    listOf(
+                        MistakeGrouper.Sample(
+                            sentence = e.original.ifBlank { e.corrected },
+                            translation = e.translation,
+                            wrong = e.original.ifBlank { e.corrected },
+                            right = e.corrected,
+                            why = e.note,
+                            tag = "说法",
+                            timestamp = e.timestamp,
+                        )
+                    )
+                } else {
+                    emptyList()
+                }
+                fromErrors + fromNote
             }
             if (corrections.isEmpty()) return@withLock 0
 
