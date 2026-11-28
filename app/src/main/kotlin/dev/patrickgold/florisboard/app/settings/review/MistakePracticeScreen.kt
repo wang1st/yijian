@@ -106,7 +106,8 @@ fun MistakePracticeScreen() {
      * also makes it obvious which item is being answered.
      */
     fun advance(item: PointWithExamples, correct: Boolean) {
-        val inRetryTail = retryItem?.point?.id == item.point.id
+        val currentRetry: PointWithExamples? = retryItem
+        val inRetryTail = currentRetry != null && currentRetry.point.id == item.point.id
         if (!correct) {
             val already: List<PointWithExamples> = failures
             if (already.none { f -> f.point.id == item.point.id }) {
@@ -173,7 +174,9 @@ fun MistakePracticeScreen() {
                 )
 
                 else -> {
-                    val item = retryItem ?: slots.getOrNull(index)
+                    // Explicit type: the ?: chain through two delegated states resolves to
+                    // Any without it, and every later member access then fails.
+                    val item: PointWithExamples? = retryItem ?: slots.getOrNull(index)
                     if (item == null) return@Column
 
                     SessionProgress(
