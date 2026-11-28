@@ -69,6 +69,9 @@ fun FlorisScreenNg(
     mainNavigationVisible: Boolean = false,
     /** Use the compact single-line app bar (top-level pages) instead of the tall collapsed one. */
     compactAppBar: Boolean = false,
+    /** Page ground. Defaults to the Material container colour; screens on the paper-ink
+     *  language pass their own so the whole surface matches. */
+    background: Color? = null,
     bottomBar: FlorisScreenBottomBar = {},
     fab: FlorisScreenFab = {},
     content: @Composable (PaddingValues) -> Unit,
@@ -108,7 +111,7 @@ fun FlorisScreenNg(
             }
         },
         floatingActionButton = fab,
-        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        containerColor = background ?: MaterialTheme.colorScheme.surfaceContainer,
         content = content,
     )
 }

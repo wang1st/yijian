@@ -17,7 +17,6 @@
 package dev.patrickgold.florisboard.app.settings.review
 
 import androidx.compose.foundation.border
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,8 +34,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -51,7 +48,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -172,12 +168,20 @@ private fun androidx.compose.foundation.layout.ColumnScope.SessionBody(
     onCheck: (String) -> Unit,
     onGrade: (Grade) -> Unit,
 ) {
-    // 32 dp top bar: progress pill + counter. No title chrome, one decision per screen.
-    LessonProgressBar(
+    val colors = YijianTheme.colors
+    val type = YijianTheme.type
+
+    // Progress as a hairline with a filled portion: present, not celebrated.
+    ProgressLine(
         progress = (state.index + if (state.phase == SessionPhase.GRADED) 1 else 0) / state.total.toFloat(),
-        label = "${state.index + 1}/${state.total}",
     )
-    Spacer(modifier = Modifier.height(24.dp))
+    Spacer(modifier = Modifier.height(Space.md))
+    Text(
+        text = "${state.index + 1} / ${state.total}",
+        style = type.label,
+        color = colors.inkMuted,
+    )
+    Spacer(modifier = Modifier.height(Space.xl))
 
     // Choice questions render options instead of an assembly area; computed once up here so
     // both the scroll content and the bottom action can branch on it.
@@ -189,58 +193,36 @@ private fun androidx.compose.foundation.layout.ColumnScope.SessionBody(
         // The error this card exists to drill, named before the question.
         val mistakes = card.entry.corrections
         if (mistakes.isNotEmpty()) {
-            MistakeBanner(
+            MistakeLine(
                 wrong = mistakes.first().wrong,
                 right = mistakes.first().right,
                 why = mistakes.first().why,
                 extra = mistakes.size - 1,
             )
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(Space.xl))
         }
 
-        PromptCard(state = state)
-        Spacer(modifier = Modifier.height(14.dp))
+        PromptBlock(state = state)
+        Spacer(modifier = Modifier.height(Space.xl))
 
         if (choices.isNotEmpty()) {
-            // 56 dp rows, 8 dp apart, 12 dp radius, "2 + 2" border and lip.
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
                 choices.forEachIndexed { i, choice ->
                     val surface = when {
                         state.phase != SessionPhase.GRADED -> SurfaceState.Neutral
                         choice.correct -> SurfaceState.Correct
                         state.picked?.text == choice.text -> SurfaceState.Wrong
-                        // Never hide the options the learner did not pick: on a multiple
-                        // choice question they are the context that makes the answer mean
-                        // something. They stay fully legible, just slightly recessed.
                         else -> SurfaceState.Recessed
                     }
-                    AnswerSurface(
+                    ChoiceSurface(
+                        index = i + 1,
+                        text = choice.text,
                         state = surface,
-                        // min 56 dp as measured, but grows when the option wraps: Chinese
-                        // translations here are often two lines.
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
                         onClick = if (state.phase == SessionPhase.QUESTION) {
                             { session.pick(choice) }
                         } else null,
-                        verticalPadding = 0.dp,
-                    ) {
-                        Text(
-                            text = "${i + 1}.  ${choice.text}",
-                            fontSize = 19.sp,
-                            lineHeight = 25.sp,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
+                    )
                 }
-            }
-            if (state.phase == SessionPhase.QUESTION) {
-                Spacer(modifier = Modifier.height(10.dp))
-                Text(
-                    text = "点上面任一选项作答",
-                    fontSize = 12.sp,
-                    color = DuoHare,
-                    modifier = Modifier.align(Alignment.CenterHorizontally),
-                )
             }
         } else {
             AnswerArea(
@@ -253,7 +235,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.SessionBody(
             )
         }
 
-        Spacer(modifier = Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(Space.xl))
         ExerciseDetail(
             card = card,
             expanded = state.detailOpen,
@@ -263,7 +245,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.SessionBody(
         )
     }
 
-    Spacer(modifier = Modifier.height(24.dp))
+    Spacer(modifier = Modifier.height(Space.xl))
 
     // One action per state: CHECK (disabled until an answer exists) then CONTINUE.
     // Grading is automatic — the self-assessment row is gone, the diff decides.
@@ -273,70 +255,182 @@ private fun androidx.compose.foundation.layout.ColumnScope.SessionBody(
         } else {
             state.typed.isNotBlank()
         }
-        LessonButton(
+        PageAction(
             text = "检查",
             enabled = canCheck,
             onClick = { onCheck(if (state.inputMode == InputMode.TILES) tiles?.answer() ?: "" else state.typed) },
         )
     } else if (state.canAdvance) {
-        // Feedback lives in the panel below the action; the button keeps the verdict colour.
-        val correct = state.diff?.let { it.similarity >= 60 } ?: (state.picked?.correct == true)
-        LessonButton(
+        PageAction(
             text = "继续",
             enabled = true,
-            tone = if (correct) ActionTone.Correct else ActionTone.Wrong,
             onClick = { onGrade(session.autoGrade()) },
         )
     }
-    Spacer(modifier = Modifier.height(19.dp))
+    Spacer(modifier = Modifier.height(Space.xl))
 }
 
-/** Purple marks new material, orange marks error review — same convention as the source. */
-private fun sectionTagColor(type: String): Color = when (type) {
-    "FIX_ERROR" -> DuoGuineaPig
-    "CLOZE" -> Color(0xFFCE82FF)
-    else -> DuoBlue
-}
-
+/** A hairline that fills. No pill, no stop indicator, no shine. */
 @Composable
-private fun PromptCard(state: SessionState) {
+private fun ProgressLine(progress: Float) {
+    val colors = YijianTheme.colors
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(2.dp)
+            .background(colors.rule),
+    ) {
+        Box(
+            modifier = Modifier
+                .width(maxWidth * progress.coerceIn(0f, 1f))
+                .fillMaxHeight()
+                .background(colors.ink),
+        )
+    }
+}
+
+/** The question, set at display size. This is the loudest thing on the screen, by design. */
+@Composable
+private fun PromptBlock(state: SessionState) {
+    val colors = YijianTheme.colors
+    val type = YijianTheme.type
     val isListen = state.typeName == "LISTEN"
     val spoken = state.aiExercise?.speak ?: state.card?.entry?.corrected.orEmpty()
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = duoCardBg()),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(modifier = Modifier.padding(18.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                SectionTag(text = typeHint(state.typeName), color = sectionTagColor(state.typeName))
-                if (state.preparing) {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    CircularProgressIndicator(
-                        color = DuoBlue,
-                        strokeWidth = 1.5.dp,
-                        modifier = Modifier.size(11.dp),
+
+    Text(
+        text = typeHint(state.typeName),
+        style = type.label,
+        color = colors.inkMuted,
+    )
+    Spacer(modifier = Modifier.height(Space.md))
+
+    if (isListen) {
+        LaunchedEffect(spoken) { speakSentence(spoken) }
+        SpeakerButton(onClick = { speakSentence(spoken) })
+    } else {
+        Text(
+            text = state.aiExercise?.prompt
+                ?: state.exercise?.prompt
+                ?: state.card?.entry?.translation.orEmpty(),
+            style = type.display,
+            color = colors.ink,
+        )
+    }
+}
+
+/** An answer option: a numbered line with a hairline, not a filled card. */
+@Composable
+private fun ChoiceSurface(
+    index: Int,
+    text: String,
+    state: SurfaceState,
+    onClick: (() -> Unit)?,
+) {
+    val colors = YijianTheme.colors
+    val type = YijianTheme.type
+    val accent = when (state) {
+        SurfaceState.Correct -> colors.positive
+        SurfaceState.Wrong -> colors.negative
+        else -> colors.ink
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .background(
+                if (state == SurfaceState.Recessed) colors.paper else colors.sheet,
+                dev.patrickgold.florisboard.app.design.Shape.sheet,
+            )
+            .then(
+                if (state == SurfaceState.Correct || state == SurfaceState.Wrong) {
+                    Modifier.border(
+                        1.dp,
+                        accent,
+                        dev.patrickgold.florisboard.app.design.Shape.sheet,
                     )
+                } else {
+                    Modifier
                 }
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            if (isListen) {
-                LaunchedEffect(spoken) { speakSentence(spoken) }
-                ListenPrompt(spoken)
-            } else {
-                Text(
-                    text = state.aiExercise?.prompt
-                        ?: state.exercise?.prompt
-                        ?: state.card?.entry?.translation.orEmpty(),
-                    fontSize = 28.sp,
-                    lineHeight = 35.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isSystemInDarkTheme()) Color(0xFFEDEDED) else DuoInk,
-                )
+            )
+            .clickable(enabled = onClick != null) { onClick?.invoke() }
+            .padding(horizontal = Space.lg, vertical = Space.md),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = "$index",
+            style = type.figure,
+            color = if (state == SurfaceState.Recessed) colors.inkMuted else accent,
+        )
+        Spacer(modifier = Modifier.width(Space.md))
+        Text(
+            text = text,
+            style = type.body,
+            color = if (state == SurfaceState.Recessed) colors.inkMuted else colors.ink,
+        )
+    }
+}
+
+/** The mistake this card drills: a hairline and two lines of type, no coloured banner. */
+@Composable
+private fun MistakeLine(wrong: String, right: String, why: String, extra: Int) {
+    val colors = YijianTheme.colors
+    val type = YijianTheme.type
+    Row(modifier = Modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .width(3.dp)
+                .height(if (why.isBlank()) 24.dp else 44.dp)
+                .background(colors.warning),
+        )
+        Spacer(modifier = Modifier.width(Space.md))
+        Column {
+            Text(
+                text = "易错点" + if (extra > 0) "  +$extra" else "",
+                style = type.label,
+                color = colors.inkMuted,
+            )
+            Spacer(modifier = Modifier.height(Space.xs))
+            Text(text = "$wrong → $right", style = type.body, color = colors.ink)
+            if (why.isNotBlank()) {
+                Spacer(modifier = Modifier.height(Space.xs))
+                Text(text = why, style = type.small, color = colors.inkMuted)
             }
         }
     }
 }
+
+/** The page action: accent when enabled, ruled outline when not. */
+@Composable
+private fun PageAction(text: String, enabled: Boolean, onClick: () -> Unit) {
+    val colors = YijianTheme.colors
+    val type = YijianTheme.type
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(52.dp)
+            .background(
+                if (enabled) colors.accent else colors.paper,
+                dev.patrickgold.florisboard.app.design.Shape.action,
+            )
+            .then(
+                if (enabled) Modifier else Modifier.border(
+                    1.dp,
+                    colors.rule,
+                    dev.patrickgold.florisboard.app.design.Shape.action,
+                )
+            )
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            style = type.body,
+            fontWeight = FontWeight.Medium,
+            color = if (enabled) colors.onAccent else colors.inkMuted,
+        )
+    }
+}
+
 
 /** Word tiles or a text field, depending on how the learner wants to answer. */
 @Composable

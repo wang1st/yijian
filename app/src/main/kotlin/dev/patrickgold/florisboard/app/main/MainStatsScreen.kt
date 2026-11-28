@@ -17,7 +17,10 @@
 package dev.patrickgold.florisboard.app.main
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.background
+import dev.patrickgold.florisboard.app.design.Space
+import androidx.compose.foundation.background
+import dev.patrickgold.florisboard.app.design.YijianTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,16 +29,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -45,11 +43,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import dev.patrickgold.florisboard.app.components.FlorisScreenNg
 import dev.patrickgold.florisboard.ime.translation.review.ReviewStore
 import dev.patrickgold.florisboard.ime.translation.EnglishTeacher
@@ -100,171 +95,132 @@ fun MainStatsScreen() {
         )
     }
 
+    val colors = YijianTheme.colors
+    val type = YijianTheme.type
+
     FlorisScreenNg(
         title = "学习报告",
         previewFieldVisible = false,
         navigationIconVisible = false,
         mainNavigationVisible = true,
         compactAppBar = true,
+        background = colors.paper,
     ) { contentPadding ->
         val s = stats
         if (s == null) {
             Box(
                 modifier = Modifier.fillMaxSize().padding(contentPadding),
                 contentAlignment = Alignment.Center,
-            ) { CircularProgressIndicator(color = StatsGreen) }
+            ) { CircularProgressIndicator(color = colors.inkMuted) }
         } else {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(contentPadding)
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp),
+                    .padding(horizontal = Space.gutter),
             ) {
-                // Big numbers
-                Row(
-                    modifier = Modifier.padding(top = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    StatTile("${s.sentences}", "练过的句子", StatsBlue, Modifier.weight(1f))
-                    StatTile("${s.words}", "英文词数", StatsGreen, Modifier.weight(1f))
-                    // A zero streak is not an error: keep it neutral rather than alarm-red.
-                    StatTile(
-                        "${s.streakDays}",
-                        "连续复习",
-                        if (s.streakDays > 0) StatsGreen else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
-                        Modifier.weight(1f),
-                    )
-                }
+                Spacer(modifier = Modifier.height(Space.xxl))
 
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = cardBg()),
-                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
-                        Text("英文正确率", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "${s.cleanRate}%",
-                            fontSize = 40.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (s.cleanRate >= 80) StatsGreen else StatsBlue,
-                        )
-                        Text(
-                            text = "完全没出错的句子占比",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                        )
-                    }
+                // The headline number, set as a figure.
+                Text(text = "${s.cleanRate}%", style = type.display, color = colors.ink)
+                Text(
+                    text = "完全没出错的句子占比",
+                    style = type.small,
+                    color = colors.inkMuted,
+                )
+
+                Spacer(modifier = Modifier.height(Space.xl))
+                RuleLine()
+                Spacer(modifier = Modifier.height(Space.lg))
+                Row(horizontalArrangement = Arrangement.spacedBy(Space.xxl)) {
+                    Figure("句子", "${s.sentences}")
+                    Figure("词数", "${s.words}")
+                    Figure("连续", "${s.streakDays}")
                 }
 
                 if (s.byTag.isNotEmpty()) {
-                    Card(
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = cardBg()),
-                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                    ) {
-                        Column(modifier = Modifier.padding(20.dp)) {
-                            Text("错在哪里", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                            Spacer(modifier = Modifier.height(12.dp))
-                            val max = s.byTag.first().second.coerceAtLeast(1)
-                            s.byTag.forEach { (tag, count) ->
-                                Row(
-                                    modifier = Modifier.padding(vertical = 5.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Text(tag, fontSize = 13.sp, modifier = Modifier.width(52.dp))
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .heightIn(min = 10.dp)
-                                            .height(10.dp)
-                                            .clip(RoundedCornerShape(5.dp))
-                                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth(count.toFloat() / max)
-                                                .height(10.dp)
-                                                .clip(RoundedCornerShape(5.dp))
-                                                .background(if (tag == "拼写") StatsRed else StatsGreen),
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Text("$count", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                }
+                    Spacer(modifier = Modifier.height(Space.xl))
+                    RuleLine()
+                    Spacer(modifier = Modifier.height(Space.lg))
+                    Text(text = "错在哪里", style = type.label, color = colors.inkMuted)
+                    Spacer(modifier = Modifier.height(Space.md))
+                    val max = s.byTag.first().second.coerceAtLeast(1)
+                    s.byTag.forEach { (tag, count) ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = tag,
+                                style = type.body,
+                                color = colors.ink,
+                                modifier = Modifier.width(56.dp),
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(2.dp)
+                                    .background(colors.rule),
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth(count.toFloat() / max)
+                                        .height(2.dp)
+                                        .background(colors.ink),
+                                )
                             }
+                            Spacer(modifier = Modifier.width(Space.md))
+                            Text(text = "$count", style = type.figure, color = colors.inkMuted)
                         }
+                        Spacer(modifier = Modifier.height(Space.sm))
                     }
                 }
 
                 if (s.recentMistakes.isNotEmpty()) {
-                    Card(
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = cardBg()),
-                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                    ) {
-                        Column(modifier = Modifier.padding(20.dp)) {
-                            Text("最近的纠正", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            s.recentMistakes.forEach { (fix, why) ->
-                                Column(modifier = Modifier.padding(vertical = 5.dp)) {
-                                    Text(fix, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                                    if (why.isNotBlank()) {
-                                        Text(
-                                            text = why,
-                                            fontSize = 12.sp,
-                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                                        )
-                                    }
-                                }
-                            }
+                    Spacer(modifier = Modifier.height(Space.xl))
+                    RuleLine()
+                    Spacer(modifier = Modifier.height(Space.lg))
+                    Text(text = "最近的纠正", style = type.label, color = colors.inkMuted)
+                    Spacer(modifier = Modifier.height(Space.md))
+                    s.recentMistakes.forEach { (fix, why) ->
+                        Text(text = fix, style = type.body, color = colors.ink)
+                        if (why.isNotBlank()) {
+                            Text(text = why, style = type.small, color = colors.inkMuted)
                         }
+                        Spacer(modifier = Modifier.height(Space.sm))
                     }
                 }
 
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = cardBg()),
-                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
-                        Text("复习卡片", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "共 ${s.cardsTotal} 张，来自你翻译过的句子",
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(Space.xl))
+                RuleLine()
+                Spacer(modifier = Modifier.height(Space.lg))
+                Text(
+                    text = "共 ${s.cardsTotal} 张复习卡片，来自你翻译过的句子。",
+                    style = type.small,
+                    color = colors.inkMuted,
+                )
+                Spacer(modifier = Modifier.height(Space.xxl))
             }
         }
     }
 }
 
+/** A hairline rule. */
 @Composable
-private fun StatTile(value: String, label: String, color: Color, modifier: Modifier = Modifier) {
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = cardBg()),
-        modifier = modifier,
-    ) {
-        Column(
-            modifier = Modifier.padding(vertical = 16.dp, horizontal = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(value, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = color)
-            Text(
-                text = label,
-                fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-            )
-        }
-    }
+private fun RuleLine() {
+    val colors = YijianTheme.colors
+    Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(colors.rule))
 }
 
+/** Label above a figure. */
 @Composable
-private fun cardBg(): Color = if (isSystemInDarkTheme()) Color(0xFF1F2023) else Color.White
+private fun Figure(label: String, value: String) {
+    val colors = YijianTheme.colors
+    val type = YijianTheme.type
+    Column {
+        Text(text = label, style = type.label, color = colors.inkMuted)
+        Spacer(modifier = Modifier.height(Space.hair))
+        Text(text = value, style = type.figure, color = colors.ink)
+    }
+}

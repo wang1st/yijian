@@ -16,10 +16,8 @@
 
 package dev.patrickgold.florisboard.app.main
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,15 +30,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -50,81 +40,43 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import dev.patrickgold.florisboard.R
 import dev.patrickgold.florisboard.app.LocalNavController
 import dev.patrickgold.florisboard.app.Routes
 import dev.patrickgold.florisboard.app.components.FlorisScreenNg
-import dev.patrickgold.florisboard.ime.translation.EnglishTeacher
-import dev.patrickgold.florisboard.ime.translation.review.ReviewAi
+import dev.patrickgold.florisboard.app.design.Space
+import dev.patrickgold.florisboard.app.design.YijianTheme
 import dev.patrickgold.florisboard.ime.translation.review.ReviewSnapshot
 import dev.patrickgold.florisboard.ime.translation.review.ReviewStore
-import dev.patrickgold.florisboard.ime.translation.review.WeakSpot
 import dev.patrickgold.florisboard.lib.util.InputMethodUtils
-import org.florisboard.lib.compose.FlorisErrorCard
-import org.florisboard.lib.compose.FlorisWarningCard
 import org.florisboard.lib.compose.stringRes
 
-private val HomeGreen = Color(0xFF58CC02)
-private val HomeBlue = Color(0xFF1CB0F6)
-private val HomeGold = Color(0xFFFFC800)
-
-/** Daily goals keep the session short enough to actually finish. */
-private const val DAILY_TARGET = 20
-
-@Composable
-private fun cardBg(): Color = if (isSystemInDarkTheme()) Color(0xFF1F2023) else Color.White
-
-private val SheetShape = RoundedCornerShape(16.dp)
-
 /**
- * Home tab, built around one question: what do I do right now?
+ * 首页.
  *
- * - one primary action (continue today's session)
- * - a ring showing how far through today's target the user is
- * - the daily quests, each with its own progress
- * - this week's activity, so a zero day is visible at a glance
- * - the weaknesses the model found in the user's own mistakes
+ * One question, answered in reading order: what is left to do today, and what do I press.
+ * Everything else on the page is set at a size that can be read but cannot compete — the old
+ * screen put seven equally loud cards in the user's way, and none of them told them anything
+ * the first line does not.
+ *
+ * The visual language is deliberately quiet: paper ground, ink text, hairline rules, and a
+ * single accent that appears only on the thing you can act on.
  */
 @Composable
 fun MainHomeScreen() {
     val navController = LocalNavController.current
     val context = LocalContext.current
+    val colors = YijianTheme.colors
+    val type = YijianTheme.type
+
     val isImeEnabled by InputMethodUtils.observeIsFlorisboardEnabled()
     val isImeSelected by InputMethodUtils.observeIsFlorisboardSelected()
 
     var snap by remember { mutableStateOf<ReviewSnapshot?>(null) }
-    var weakSpots by remember { mutableStateOf<List<WeakSpot>>(emptyList()) }
-    var analysing by remember { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) {
-        snap = ReviewStore.snapshot()
-        // Weak-spot analysis is cached for the day; it costs one model call.
-        weakSpots = WeakSpotCache.load()
-        if (weakSpots.isEmpty() && !WeakSpotCache.checkedToday()) {
-            analysing = true
-            val entries = EnglishTeacher.readEntriesStatic()
-            val samples = entries.flatMap { e ->
-                e.corrections.map { "${it.wrong} → ${it.right}" }
-            }.takeLast(40)
-            if (samples.isNotEmpty()) {
-                weakSpots = ReviewAi.analyzeWeaknesses(samples)
-            }
-            // Save even when empty: the day is checked either way, so the analysis does not
-            // re-run on every cold start while there is nothing to analyse.
-            WeakSpotCache.save(weakSpots)
-            analysing = false
-            snap = ReviewStore.snapshot()
-        }
-    }
+    LaunchedEffect(Unit) { snap = ReviewStore.snapshot() }
 
     FlorisScreenNg(
         title = "译键",
@@ -132,480 +84,229 @@ fun MainHomeScreen() {
         navigationIconVisible = false,
         mainNavigationVisible = true,
         compactAppBar = true,
+        background = colors.paper,
     ) { contentPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(contentPadding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = Space.gutter),
         ) {
-            if (!isImeEnabled) {
-                FlorisErrorCard(
-                    showIcon = false,
-                    text = stringRes(R.string.settings__home__ime_not_enabled),
-                    onClick = { InputMethodUtils.showImeEnablerActivity(context) },
-                )
-            } else if (!isImeSelected) {
-                FlorisWarningCard(
-                    showIcon = false,
-                    text = stringRes(R.string.settings__home__ime_not_selected),
-                    onClick = { InputMethodUtils.showImePicker(context) },
+            // Status, said plainly and only when it is wrong.
+            if (!isImeEnabled || !isImeSelected) {
+                Spacer(modifier = Modifier.height(Space.lg))
+                Notice(
+                    text = if (!isImeEnabled) {
+                        stringRes(R.string.settings__home__ime_not_enabled)
+                    } else {
+                        stringRes(R.string.settings__home__ime_not_selected)
+                    },
+                    onClick = {
+                        if (!isImeEnabled) {
+                            InputMethodUtils.showImeEnablerActivity(context)
+                        } else {
+                            InputMethodUtils.showImePicker(context)
+                        }
+                    },
                 )
             }
 
             val s = snap
-            if (s == null) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().height(320.dp),
-                    contentAlignment = Alignment.Center,
-                ) { CircularProgressIndicator(color = HomeGreen) }
-                return@Column
-            }
+            val pending = s?.let { it.dueCount + it.newCount } ?: 0
+            val doneToday = s?.reviewedToday ?: 0
 
-            val pending = s.dueCount + s.newCount
-            val done = s.reviewedToday
+            Spacer(modifier = Modifier.height(Space.xxl))
 
-            // Top status: streak and XP, the two numbers worth growing.
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                StatusPill("🔥", "${s.streakDays} 天", "连续", Modifier.weight(1f))
-                StatusPill("⚡", "${s.xpToday} XP", "今日", Modifier.weight(1f))
-                StatusPill("🎯", "${s.accuracyToday}%", "正确率", Modifier.weight(1f))
-            }
-
-            // The ring: how far through today's target am I?
-            Card(
-                shape = SheetShape,
-                colors = CardDefaults.cardColors(containerColor = cardBg()),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp),
-            ) {
-                Column(
-                    modifier = Modifier.padding(20.dp).fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    GoalRing(progress = (done.toFloat() / DAILY_TARGET).coerceIn(0f, 1f), done = done)
-                    Spacer(modifier = Modifier.height(14.dp))
+            // The one thing the screen is about.
+            when {
+                s == null -> Text("…", style = type.display, color = colors.inkMuted)
+                pending == 0 && doneToday == 0 -> {
                     Text(
-                        text = when {
-                            done >= DAILY_TARGET -> "今日目标已完成 🎉"
-                            pending == 0 -> "卡片都练完了，明天继续"
-                            else -> {
-                                val toGoal = (DAILY_TARGET - done).coerceAtLeast(0)
-                                val thisSession = pending.coerceAtMost(toGoal)
-                                "还有 $pending 张待练 · 再练 $thisSession 张达成今日目标"
-                            }
-                        },
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                        text = "还没有可练的句子",
+                        style = type.display,
+                        color = colors.ink,
                     )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    BigActionButton(
-                        text = when {
-                            pending > 0 -> "开始练习"
-                            else -> "练新句子"
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = {
-                            navController.navigate(
-                                if (pending > 0) Routes.Settings.ReviewPractice else Routes.Settings.ReviewGenerate
-                            )
-                        },
-                    )
-                }
-            }
-
-            // Daily quests
-            Card(
-                shape = SheetShape,
-                colors = CardDefaults.cardColors(containerColor = cardBg()),
-                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Text("今日任务", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(12.dp))
-                    QuestRow("复习 ${DAILY_TARGET} 张卡片", done, DAILY_TARGET)
-                    Spacer(modifier = Modifier.height(10.dp))
-                    QuestRow("记住 10 张", s.rememberedToday, 10)
-                    Spacer(modifier = Modifier.height(10.dp))
-                    QuestRow("连对 5 题", s.correctRun, 5)
-                }
-            }
-
-            // This week, as bars. A missing day is the honest signal that matters.
-            Card(
-                shape = SheetShape,
-                colors = CardDefaults.cardColors(containerColor = cardBg()),
-                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("本周", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.weight(1f))
-                        Text(
-                            text = "共 ${s.lastSevenDays.sum()} 张",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    WeekBars(s.lastSevenDays)
-                }
-            }
-
-            // Weaknesses from the user's own corrections, analysed by the model.
-            if (analysing) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    CircularProgressIndicator(
-                        color = HomeBlue,
-                        strokeWidth = 2.dp,
-                        modifier = Modifier.size(16.dp),
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.height(Space.sm))
                     Text(
-                        text = "正在分析你的薄弱点…",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        text = "用译键翻译几句英文，它们会自动变成复习卡片。",
+                        style = type.body,
+                        color = colors.inkMuted,
                     )
                 }
-            } else if (weakSpots.isNotEmpty()) {
-                Card(
-                    shape = SheetShape,
-                    colors = CardDefaults.cardColors(containerColor = cardBg()),
-                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("薄弱点", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                            Spacer(modifier = Modifier.weight(1f))
-                            Text(
-                                text = "专项练习 ›",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = HomeBlue,
-                                modifier = Modifier.clickable {
-                                    navController.navigate(Routes.Settings.ReviewGenerate)
-                                },
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(12.dp))
-                        val max = weakSpots.maxOf { it.count }.coerceAtLeast(1)
-                        weakSpots.forEachIndexed { i, spot ->
-                            if (i > 0) Spacer(modifier = Modifier.height(10.dp))
-                            WeakSpotRow(spot, max)
-                        }
-                    }
+                pending == 0 -> {
+                    Text("今天已经练完", style = type.display, color = colors.ink)
+                    Spacer(modifier = Modifier.height(Space.sm))
+                    Text(
+                        text = "$doneToday 张，全部过了一遍。明天再见。",
+                        style = type.body,
+                        color = colors.inkMuted,
+                    )
+                }
+                else -> {
+                    Text("今天还有 $pending 张", style = type.display, color = colors.ink)
+                    Spacer(modifier = Modifier.height(Space.sm))
+                    Text(
+                        text = "到期 ${s.dueCount} · 新句子 ${s.newCount}",
+                        style = type.small,
+                        color = colors.inkMuted,
+                    )
                 }
             }
 
-            Text(
-                text = "复习卡片由你翻译过的句子自动生成，按 1 / 3 / 7 / 15 / 30 天的间隔重现。",
-                fontSize = 11.sp,
-                lineHeight = 16.sp,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
-                modifier = Modifier.padding(vertical = 20.dp),
+            Spacer(modifier = Modifier.height(Space.xl))
+            PrimaryAction(
+                label = when {
+                    pending > 0 -> "开始练习"
+                    doneToday > 0 -> "再看一遍"
+                    else -> "去翻译"
+                },
+                onClick = {
+                    navController.navigate(
+                        if (pending > 0 || doneToday > 0) Routes.Settings.ReviewPractice
+                        else Routes.Main.Home
+                    )
+                },
             )
+
+            // Everything below is reference, set small enough not to compete.
+            if (s != null) {
+                Spacer(modifier = Modifier.height(Space.xxxl))
+                RuleLine()
+                Spacer(modifier = Modifier.height(Space.lg))
+                FigureRow(
+                    figures = listOf(
+                        "连续" to "${s.streakDays} 天",
+                        "今天" to "$doneToday 张",
+                        "正确" to "${s.accuracyToday}%",
+                    ),
+                )
+
+                Spacer(modifier = Modifier.height(Space.xxl))
+                WeekLine(s.lastSevenDays)
+            }
+
+            Spacer(modifier = Modifier.height(Space.xxl))
+            RuleLine()
+            Spacer(modifier = Modifier.height(Space.lg))
+            Link("翻译设置") { navController.navigate(Routes.Settings.Translation) }
+            Spacer(modifier = Modifier.height(Space.xxl))
         }
     }
 }
 
+/** A single filled action. The only element on the page allowed to use the accent. */
 @Composable
-private fun StatusPill(
-    emoji: String,
-    value: String,
-    label: String,
-    modifier: Modifier = Modifier,
-) {
-    Card(
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = cardBg()),
-        modifier = modifier,
-    ) {
-        Column(
-            modifier = Modifier.padding(vertical = 10.dp).fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(emoji, fontSize = 16.sp)
-            Text(value, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-            Text(
-                text = label,
-                fontSize = 10.sp,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
-            )
-        }
-    }
-}
-
-/** Circular progress for today's target, with the count in the middle. */
-@Composable
-private fun GoalRing(progress: Float, done: Int) {
-    val track = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f)
-    Box(contentAlignment = Alignment.Center) {
-        Canvas(modifier = Modifier.size(160.dp)) {
-            val stroke = 16.dp.toPx()
-            val inset = stroke / 2
-            val arcSize = Size(size.width - stroke, size.height - stroke)
-            drawArc(
-                color = track,
-                startAngle = -90f,
-                sweepAngle = 360f,
-                useCenter = false,
-                topLeft = Offset(inset, inset),
-                size = arcSize,
-                style = Stroke(width = stroke, cap = StrokeCap.Round),
-            )
-            drawArc(
-                color = HomeGreen,
-                startAngle = -90f,
-                sweepAngle = 360f * progress,
-                useCenter = false,
-                topLeft = Offset(inset, inset),
-                size = arcSize,
-                style = Stroke(width = stroke, cap = StrokeCap.Round),
-            )
-        }
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = "$done",
-                fontSize = 40.sp,
-                fontWeight = FontWeight.Bold,
-                color = HomeGreen,
-            )
-            Text(
-                text = "/ $DAILY_TARGET 张",
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
-            )
-        }
-    }
-}
-
-/** Rounded pill button with the pressed bottom edge. */
-@Composable
-private fun BigActionButton(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun PrimaryAction(label: String, onClick: () -> Unit) {
+    val colors = YijianTheme.colors
+    val type = YijianTheme.type
     Box(
-        modifier = modifier
+        modifier = Modifier
+            .fillMaxWidth()
             .height(52.dp)
-            .padding(bottom = 3.dp)
-            .background(HomeGreen.copy(alpha = 0.45f), RoundedCornerShape(14.dp))
+            .background(colors.accent, dev.patrickgold.florisboard.app.design.Shape.action)
             .clickable(onClick = onClick),
-        contentAlignment = Alignment.TopCenter,
+        contentAlignment = Alignment.Center,
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(49.dp)
-                .background(HomeGreen, RoundedCornerShape(14.dp)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = text,
-                color = Color.White,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-            )
-        }
-    }
-}
-
-@Composable
-private fun QuestRow(label: String, current: Int, target: Int) {
-    val reached = current >= target
-    val fraction = (current.toFloat() / target).coerceIn(0f, 1f)
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(
-            imageVector = Icons.Default.CheckCircle,
-            contentDescription = null,
-            tint = if (reached) HomeGreen else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f),
-            modifier = Modifier.size(18.dp),
-        )
-        Spacer(modifier = Modifier.width(10.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = label,
-                fontSize = 13.sp,
-                fontWeight = if (reached) FontWeight.Medium else FontWeight.Normal,
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(6.dp)
-                    .background(
-                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
-                        RoundedCornerShape(3.dp),
-                    ),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(fraction)
-                        .height(6.dp)
-                        .background(
-                            if (reached) HomeGreen else HomeGold,
-                            RoundedCornerShape(3.dp),
-                        ),
-                )
-            }
-        }
-        Spacer(modifier = Modifier.width(10.dp))
         Text(
-            text = "$current/$target",
-            fontSize = 11.sp,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+            text = label,
+            style = type.body,
+            fontWeight = FontWeight.Medium,
+            color = colors.onAccent,
         )
     }
 }
 
-/** Seven bars, one per day, labelled by weekday initial. */
+/** Three figures in a row, set as data rather than as trophies. */
 @Composable
-private fun WeekBars(values: List<Int>) {
-    val labels = listOf("一", "二", "三", "四", "五", "六", "日")
-    val max = values.maxOrNull()?.coerceAtLeast(1) ?: 1
-    val todayIndex = values.lastIndex
-    Row(
-        modifier = Modifier.fillMaxWidth().height(72.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.Bottom,
-    ) {
-        values.forEachIndexed { i, v ->
-            Column(
-                modifier = Modifier.weight(1f),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height((8 + 40f * v / max).dp)
-                        .background(
-                            color = when {
-                                v == 0 -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f)
-                                i == todayIndex -> HomeGreen
-                                else -> HomeGreen.copy(alpha = 0.55f)
-                            },
-                            shape = RoundedCornerShape(4.dp),
-                        ),
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = labels[i % 7],
-                    fontSize = 10.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(
-                        alpha = if (i == todayIndex) 0.85f else 0.45f
-                    ),
-                )
+private fun FigureRow(figures: List<Pair<String, String>>) {
+    val colors = YijianTheme.colors
+    val type = YijianTheme.type
+    Row(horizontalArrangement = Arrangement.spacedBy(Space.xxl)) {
+        figures.forEach { (label, value) ->
+            Column {
+                Text(text = label, style = type.label, color = colors.inkMuted)
+                Spacer(modifier = Modifier.height(Space.hair))
+                Text(text = value, style = type.figure, color = colors.ink)
             }
         }
     }
 }
 
+/** Seven days as a single line of type, not a bar chart. */
 @Composable
-private fun WeakSpotRow(spot: WeakSpot, max: Int) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = spot.topic,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                text = "${spot.count} 次",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                color = HomeBlue,
-            )
-        }
-        Spacer(modifier = Modifier.height(5.dp))
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(6.dp)
-                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), RoundedCornerShape(3.dp)),
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(spot.count.toFloat() / max)
-                    .height(6.dp)
-                    .background(HomeBlue, RoundedCornerShape(3.dp)),
-            )
-        }
-        if (spot.advice.isNotBlank()) {
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = spot.advice,
-                fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-            )
-        }
-    }
-}
-
-/**
- * Weak-spot analysis cache, persisted across launches.
- *
- * The analysis costs a model call, so it runs at most once per day — not once per app start,
- * which is what an in-memory cache would degrade into.
- */
-private object WeakSpotCache {
-    private val file = java.io.File(
-        dev.patrickgold.florisboard.FlorisApplication.getHack().filesDir,
-        "yijian_weakspots.json",
-    )
-
-    private fun today(): String =
-        java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
-
-    fun load(): List<WeakSpot> {
-        val cachedDay = runCatching {
-            val root = org.json.JSONObject(file.readText())
-            root.optString("day", "")
-        }.getOrDefault("")
-        if (cachedDay != today()) return emptyList()
-        return runCatching {
-            val root = org.json.JSONObject(file.readText())
-            val arr = root.optJSONArray("spots") ?: org.json.JSONArray()
-            (0 until arr.length()).mapNotNull { i ->
-                arr.optJSONObject(i)?.let {
-                    WeakSpot(
-                        topic = it.optString("topic"),
-                        count = it.optInt("count", 1),
-                        example = it.optString("example"),
-                        advice = it.optString("advice"),
+private fun WeekLine(days: List<Int>) {
+    val colors = YijianTheme.colors
+    val type = YijianTheme.type
+    if (days.isEmpty()) return
+    val weekdays = listOf("一", "二", "三", "四", "五", "六", "日")
+    Column {
+        Text(text = "本周", style = type.label, color = colors.inkMuted)
+        Spacer(modifier = Modifier.height(Space.sm))
+        Row(horizontalArrangement = Arrangement.spacedBy(Space.md)) {
+            days.forEachIndexed { i, count ->
+                val active = count > 0
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = weekdays[i % 7],
+                        style = type.label,
+                        color = if (i == days.lastIndex) colors.ink else colors.inkMuted,
+                    )
+                    Spacer(modifier = Modifier.height(Space.hair))
+                    Text(
+                        text = if (active) "$count" else "·",
+                        style = type.figure,
+                        color = if (active) colors.ink else colors.rule,
                     )
                 }
-            }.filter { it.topic.isNotBlank() }
-        }.getOrDefault(emptyList())
-    }
-
-    fun checkedToday(): Boolean = runCatching {
-        org.json.JSONObject(file.readText()).optString("day", "") == today()
-    }.getOrDefault(false)
-
-    fun save(spots: List<WeakSpot>) {
-        runCatching {
-            val root = org.json.JSONObject().apply {
-                put("day", today())
-                put("spots", org.json.JSONArray().apply {
-                    spots.forEach { s ->
-                        put(org.json.JSONObject().apply {
-                            put("topic", s.topic)
-                            put("count", s.count)
-                            put("example", s.example)
-                            put("advice", s.advice)
-                        })
-                    }
-                })
             }
-            file.writeText(root.toString())
         }
     }
+}
+
+/** A quiet inline notice. One line of colour, not a filled banner. */
+@Composable
+private fun Notice(text: String, onClick: () -> Unit) {
+    val colors = YijianTheme.colors
+    val type = YijianTheme.type
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .width(3.dp)
+                .height(36.dp)
+                .background(colors.warning),
+        )
+        Spacer(modifier = Modifier.width(Space.md))
+        Text(text = text, style = type.small, color = colors.ink)
+    }
+}
+
+/** A hairline that separates without boxing. */
+@Composable
+private fun RuleLine() {
+    val colors = YijianTheme.colors
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(colors.rule),
+    )
+}
+
+/** A text link, underlined by weight rather than by colour. */
+@Composable
+private fun Link(label: String, onClick: () -> Unit) {
+    val colors = YijianTheme.colors
+    val type = YijianTheme.type
+    Text(
+        text = label,
+        style = type.body,
+        color = colors.ink,
+        modifier = Modifier.clickable(onClick = onClick),
+    )
 }

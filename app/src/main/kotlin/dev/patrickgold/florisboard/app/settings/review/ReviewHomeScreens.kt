@@ -17,6 +17,8 @@
 package dev.patrickgold.florisboard.app.settings.review
 
 import androidx.compose.foundation.background
+import dev.patrickgold.florisboard.app.design.YijianTheme
+import dev.patrickgold.florisboard.app.design.Space
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,7 +30,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -37,10 +38,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -49,7 +47,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -73,6 +70,9 @@ import java.util.Locale
 @Composable
 fun ReviewHomeScreen() {
     val navController = LocalNavController.current
+    val colors = YijianTheme.colors
+    val type = YijianTheme.type
+
     var snapshot by remember { mutableStateOf<ReviewSnapshot?>(null) }
     var recent by remember { mutableStateOf<List<ReviewCard>>(emptyList()) }
     var profile by remember { mutableStateOf<MistakeProfile?>(null) }
@@ -89,185 +89,166 @@ fun ReviewHomeScreen() {
         navigationIconVisible = false,
         mainNavigationVisible = true,
         compactAppBar = true,
+        background = colors.paper,
     ) { contentPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(contentPadding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = Space.gutter),
         ) {
             val s = snapshot
             val pending = (s?.dueCount ?: 0) + (s?.newCount ?: 0)
+            val done = s?.reviewedToday ?: 0
 
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = duoCardBg()),
-                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("🔥", fontSize = 34.sp)
-                        Spacer(modifier = Modifier.width(14.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "${s?.streakDays ?: 0} 天连续复习",
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Bold,
-                            )
-                            Text(
-                                text = if (s == null) "加载中…"
-                                else "共 ${s.totalCards} 张卡片 · 今日已完成 ${s.reviewedToday} 张",
-                                fontSize = 12.sp,
-                                color = duoTextMuted(),
-                            )
-                        }
-                        TextButton(onClick = { navController.navigate(Routes.Settings.ReviewHistory) }) {
-                            Text("历史", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = DuoBlue)
-                        }
-                    }
+            Spacer(modifier = Modifier.height(Space.xxl))
 
-                    Spacer(modifier = Modifier.height(16.dp))
-                    val done = s?.reviewedToday ?: 0
-                    val goal = (done + pending).coerceAtLeast(1)
-                    LinearProgressIndicator(
-                        progress = { done.toFloat() / goal },
-                        color = DuoGreen,
-                        trackColor = duoBorder(),
-                        drawStopIndicator = {},
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(10.dp)
-                            .clip(RoundedCornerShape(5.dp)),
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = when {
-                            s == null -> "…"
-                            pending == 0 -> "今日已完成，明天见 🎉"
-                            else -> "还剩 $pending 张：待复习 ${s.dueCount} · 新句子 ${s.newCount}"
-                        },
-                        fontSize = 13.sp,
-                        color = duoTextMuted(),
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    if (pending == 0) {
-                        DuoSecondaryButton(
-                            text = "浏览历史",
-                            onClick = { navController.navigate(Routes.Settings.ReviewHistory) },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    } else {
-                        DuoButton(
-                            text = "开始练习",
-                            onClick = { navController.navigate(Routes.Settings.ReviewPractice) },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
+            // The headline is the number, set as a figure rather than inside a ring.
+            Text(
+                text = if (s == null) "…" else "$done",
+                style = type.display,
+                color = colors.ink,
+            )
+            Text(
+                text = "今天练过 · 共 ${s?.totalCards ?: 0} 张卡片",
+                style = type.small,
+                color = colors.inkMuted,
+            )
+
+            Spacer(modifier = Modifier.height(Space.lg))
+            if (pending > 0) {
+                PagePrimaryAction("开始练习") {
+                    navController.navigate(Routes.Settings.ReviewPractice)
                 }
+            } else {
+                Text(
+                    text = "今天已经练完了。",
+                    style = type.body,
+                    color = colors.inkMuted,
+                )
             }
 
-            // How each kind of mistake is receding: the one number that says whether the
-            // practice is working.
-            val p = profile
-            if (p != null && p.kinds.isNotEmpty()) {
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = duoCardBg()),
-                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
-                        Text("错误类型的消退", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "连续答对越多，说明这个点越稳",
-                            fontSize = 11.sp,
-                            color = duoTextMuted(),
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        p.kinds.take(4).forEachIndexed { i, k ->
-                            if (i > 0) Spacer(modifier = Modifier.height(10.dp))
-                            MistakeKindRow(k)
-                        }
+            if (s != null) {
+                Spacer(modifier = Modifier.height(Space.xxl))
+                Rule()
+                Spacer(modifier = Modifier.height(Space.lg))
+
+                Text(text = "状态", style = type.label, color = colors.inkMuted)
+                Spacer(modifier = Modifier.height(Space.md))
+                Row(horizontalArrangement = Arrangement.spacedBy(Space.xxl)) {
+                    Figure("连续", "${s.streakDays} 天")
+                    Figure("待练", "$pending 张")
+                    Figure("正确", "${s.accuracyToday}%")
+                }
+
+                // Mistake kinds, stated as progress rather than as bars to admire.
+                val p = profile
+                if (p != null && p.kinds.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(Space.xl))
+                    Rule()
+                    Spacer(modifier = Modifier.height(Space.lg))
+                    Text(text = "易错点", style = type.label, color = colors.inkMuted)
+                    Spacer(modifier = Modifier.height(Space.md))
+                    p.kinds.take(4).forEach { k ->
+                        MistakeKindLine(k)
+                        Spacer(modifier = Modifier.height(Space.sm))
                     }
                 }
             }
 
             if (recent.isNotEmpty()) {
-                Text(
-                    text = "最近练过",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = duoTextMuted(),
-                    modifier = Modifier.padding(top = 20.dp, bottom = 8.dp),
-                )
+                Spacer(modifier = Modifier.height(Space.xl))
+                Rule()
+                Spacer(modifier = Modifier.height(Space.lg))
+                Text(text = "最近练过", style = type.label, color = colors.inkMuted)
+                Spacer(modifier = Modifier.height(Space.md))
                 recent.forEach { card ->
-                    Card(
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = duoCardBg()),
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                    ) {
-                        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                            Text(
-                                text = card.entry.corrected.ifBlank { card.entry.original },
-                                fontSize = 15.sp,
-                                lineHeight = 21.sp,
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = card.entry.translation,
-                                fontSize = 12.sp,
-                                color = duoTextMuted(),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
+                    Text(
+                        text = card.entry.corrected.ifBlank { card.entry.original },
+                        style = type.body,
+                        color = colors.ink,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(modifier = Modifier.height(Space.hair))
+                    Text(
+                        text = card.entry.translation,
+                        style = type.small,
+                        color = colors.inkMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(modifier = Modifier.height(Space.md))
                 }
             }
 
+            Spacer(modifier = Modifier.height(Space.xl))
+            Rule()
+            Spacer(modifier = Modifier.height(Space.lg))
             Text(
-                text = "你平时用译键翻译过的句子会自动变成复习卡片，按 1 / 3 / 7 / 15 / 30 天的间隔重现；答错降级，明天重来。",
-                fontSize = 12.sp,
-                lineHeight = 18.sp,
-                color = duoTextMuted(),
-                modifier = Modifier.padding(top = 12.dp, bottom = 20.dp),
+                text = "翻译过的句子会自动变成卡片，按 1 / 3 / 7 / 15 / 30 天重现。",
+                style = type.small,
+                color = colors.inkMuted,
             )
+            Spacer(modifier = Modifier.height(Space.xxl))
         }
     }
 }
 
-/** One mistake kind with how far it has receded. */
+/** One mistake kind: name, how far it has receded, nothing else. */
 @Composable
-private fun MistakeKindRow(k: MistakeKindStat) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(k.kind, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-            Text(
-                text = if (k.correctRun == 0) "错 ${k.totalErrors} 次" else "连对 ${k.correctRun}",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (k.mastered) DuoGreen else DuoBlue,
-            )
-        }
-        Spacer(modifier = Modifier.height(5.dp))
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(6.dp)
-                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), RoundedCornerShape(3.dp)),
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth((k.correctRun / 5f).coerceIn(0f, 1f))
-                    .height(6.dp)
-                    .background(if (k.mastered) DuoGreen else DuoBlue, RoundedCornerShape(3.dp)),
-            )
-        }
-        if (k.mastered) {
-            Spacer(modifier = Modifier.height(3.dp))
-            Text("已掌握 ✅", fontSize = 10.sp, color = DuoGreen)
-        }
+private fun MistakeKindLine(k: MistakeKindStat) {
+    val colors = YijianTheme.colors
+    val type = YijianTheme.type
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(text = k.kind, style = type.body, color = colors.ink, modifier = Modifier.weight(1f))
+        Text(
+            text = if (k.mastered) "已掌握" else if (k.correctRun > 0) "连对 ${k.correctRun}" else "错 ${k.totalErrors}",
+            style = type.small,
+            color = if (k.mastered) colors.positive else colors.inkMuted,
+        )
+    }
+}
+
+/** A hairline rule, the only divider the language uses. */
+@Composable
+internal fun Rule() {
+    val colors = YijianTheme.colors
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(colors.rule),
+    )
+}
+
+/** Label above a figure. */
+@Composable
+internal fun Figure(label: String, value: String) {
+    val colors = YijianTheme.colors
+    val type = YijianTheme.type
+    Column {
+        Text(text = label, style = type.label, color = colors.inkMuted)
+        Spacer(modifier = Modifier.height(Space.hair))
+        Text(text = value, style = type.figure, color = colors.ink)
+    }
+}
+
+/** The page's single filled action. */
+@Composable
+internal fun PagePrimaryAction(label: String, onClick: () -> Unit) {
+    val colors = YijianTheme.colors
+    val type = YijianTheme.type
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(52.dp)
+            .background(colors.accent, dev.patrickgold.florisboard.app.design.Shape.action)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text = label, style = type.body, fontWeight = FontWeight.Medium, color = colors.onAccent)
     }
 }
 
@@ -277,9 +258,11 @@ fun ReviewHistoryScreen() {
     var cards by remember { mutableStateOf<List<ReviewCard>?>(null) }
     LaunchedEffect(Unit) { cards = ReviewStore.allCards() }
 
+    val colors = YijianTheme.colors
     FlorisScreenNg(
         title = "练习历史",
         previewFieldVisible = false,
+        background = colors.paper,
     ) { contentPadding ->
         val list = cards
         when {
