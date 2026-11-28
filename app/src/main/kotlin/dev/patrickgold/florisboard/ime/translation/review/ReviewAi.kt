@@ -51,7 +51,7 @@ object ReviewAi {
     /** True when a local diff is close enough to be worth asking the model about. */
     fun shouldAskAi(similarity: Int): Boolean = similarity in BAND_LOW until BAND_HIGH
 
-    private fun isEnabled(): Boolean = prefs.translation.enabled.get() && prefs.translation.apiKey.get().isNotBlank()
+    internal fun isEnabled(): Boolean = prefs.translation.enabled.get() && prefs.translation.apiKey.get().isNotBlank()
 
     /** Sends a single-turn prompt and returns the model's raw text reply. */
     private fun chat(system: String, user: String, maxTokens: Int = 700): String {

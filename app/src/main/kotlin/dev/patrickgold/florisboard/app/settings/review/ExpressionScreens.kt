@@ -186,12 +186,17 @@ fun ExpressionPracticeScreen() {
     val current = items.getOrNull(index)
 
     /** Records the practice and advances; the callback resets the reveal state. */
-    fun next(scopeRef: kotlinx.coroutines.CoroutineScope, after: () -> Unit) {
+    var saving by remember { mutableStateOf(false) }
+    fun next(recalled: Boolean) {
         val e = current ?: return
-        scopeRef.launch {
-            runCatching { ExpressionStore.recordPractice(e) }
-            after()
-            index += 1
+        if (saving) return
+        saving = true
+        scope.launch {
+            if (runCatching { ExpressionStore.recordPractice(e, recalled) }.isSuccess) {
+                revealed = false
+                index += 1
+            }
+            saving = false
         }
     }
 
@@ -217,7 +222,7 @@ fun ExpressionPracticeScreen() {
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        "还没有可练的表达。多翻译几句，模型给出更地道说法时会自动积累。",
+                        "今天没有待练的表达。新表达会随翻译积累，练过的会按回忆情况再次出现。",
                         style = type.small,
                         color = colors.inkMuted,
                     )
@@ -275,8 +280,8 @@ fun ExpressionPracticeScreen() {
                         Action("看答案") { revealed = true }
                     } else {
                         Row(horizontalArrangement = Arrangement.spacedBy(Space.md)) {
-                            Action("还想不起来", emphasised = false) { next(scope) { revealed = false } }
-                            Action("能用了") { next(scope) { revealed = false } }
+                            Action("还想不起来", emphasised = false) { next(false) }
+                            Action("能用了") { next(true) }
                         }
                     }
                     Spacer(modifier = Modifier.height(Space.xl))

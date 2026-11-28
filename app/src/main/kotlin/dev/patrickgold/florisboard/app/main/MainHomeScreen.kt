@@ -17,8 +17,8 @@
 package dev.patrickgold.florisboard.app.main
 
 import androidx.compose.foundation.layout.heightIn
-import dev.patrickgold.florisboard.ime.translation.mistake.MistakeStore
-import dev.patrickgold.florisboard.ime.translation.mistake.MistakePoint
+import dev.patrickgold.florisboard.ime.translation.review.PersonalPractice
+import dev.patrickgold.florisboard.ime.translation.review.PracticeSnapshot
 import dev.patrickgold.florisboard.app.design.Shape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -36,6 +36,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -80,20 +82,10 @@ fun MainHomeScreen() {
     val isImeSelected by InputMethodUtils.observeIsFlorisboardSelected()
 
     var stats by remember { mutableStateOf<ReviewStats?>(null) }
-    // The point the learner keeps getting wrong is the headline, not the queue length: a card
-    // count says how much work is pending, a mistake says what is actually broken.
-    var focus by remember { mutableStateOf<MistakePoint?>(null) }
+    var practice by remember { mutableStateOf<PracticeSnapshot?>(null) }
     LaunchedEffect(Unit) {
+        practice = withContext(Dispatchers.IO) { PersonalPractice.shared.snapshot() }
         stats = runCatching { ReviewStatsSource.snapshot() }.getOrNull()
-        focus = runCatching<MistakePoint?> {
-            MistakeStore.allPoints()
-                .filter { !it.mastered }
-                .sortedWith(
-                    compareByDescending<MistakePoint> { it.stubborn }
-                        .thenByDescending { it.occurrences }
-                )
-                .firstOrNull()
-        }.getOrNull()
     }
 
     FlorisScreenNg(
@@ -130,65 +122,28 @@ fun MainHomeScreen() {
                 )
             }
 
-            val doneToday = stats?.reviewedToday ?: 0
-            val totalPoints = stats?.totalPoints ?: 0
-
             Spacer(modifier = Modifier.height(Space.xxl))
-
-            // What the screen is about: the mistake being repeated, named plainly.
-            val f = focus
-            when {
-                stats == null -> Text("…", style = type.display, color = colors.inkMuted)
-                f != null -> {
-                    Text(
-                        text = if (f.stubborn) "还在反复" else "最近在错",
-                        style = type.label,
-                        color = if (f.stubborn) colors.negative else colors.inkMuted,
-                    )
-                    Spacer(modifier = Modifier.height(Space.xs))
-                    Text(text = f.label, style = type.display, color = colors.ink)
-                    Spacer(modifier = Modifier.height(Space.sm))
-                    Text(
-                        text = buildString {
-                            append("错过 ${f.occurrences} 次")
-                            if (f.history.isNotEmpty()) {
-                                append(" · 最近 ${f.history.size} 次对 ${f.history.count { it }} 次")
-                            }
-                            val wrong = f.wrongForms.firstOrNull()
-                            if (wrong != null && f.correctForm.isNotBlank()) append(" · $wrong → ${f.correctForm}")
-                        },
-                        style = type.small,
-                        color = colors.inkMuted,
-                    )
-                }
-                doneToday == 0 && totalPoints == 0 -> {
-                    Text("还没有错题", style = type.display, color = colors.ink)
-                    Spacer(modifier = Modifier.height(Space.sm))
-                    Text(
-                        "用译键翻译时被纠正过的用法会出现在这里。",
-                        style = type.body,
-                        color = colors.inkMuted,
-                    )
-                }
-                else -> {
-                    Text("今天没有要复习的", style = type.display, color = colors.ink)
-                    Spacer(modifier = Modifier.height(Space.sm))
-                    Text(
-                        "$doneToday 个都过了一遍。",
-                        style = type.body,
-                        color = colors.inkMuted,
-                    )
-                }
-            }
+            val snapshot = practice
+            val task = snapshot?.task
+            Text("今天的场景", style = type.label, color = colors.inkMuted)
+            Spacer(modifier = Modifier.height(Space.sm))
+            Text(when {
+                snapshot == null -> "…"
+                task != null -> task.title
+                snapshot.sources > 0 -> "今天的场景练完了"
+                else -> "从你的英语记录开始"
+            }, style = type.display, color = colors.ink)
+            Spacer(modifier = Modifier.height(Space.sm))
+            Text(when {
+                task != null -> task.prompt
+                snapshot != null && snapshot.sources > 0 -> "近 28 天独立首答通过 ${snapshot.passed} / ${snapshot.graded}"
+                else -> "导入个人练习库，在新情境里试试自己想说的话。"
+            }, style = type.body, color = colors.inkMuted)
 
             Spacer(modifier = Modifier.height(Space.xl))
             PrimaryAction(
-                label = if (f != null) "练这些错" else "去翻译",
-                onClick = {
-                    navController.navigate(
-                        if (f != null) Routes.Settings.ReviewMistakes else Routes.Settings.Translation
-                    )
-                },
+                label = "开始场景练习",
+                onClick = { navController.navigate(Routes.Settings.PersonalPractice) },
             )
 
             Spacer(modifier = Modifier.height(Space.sm))
