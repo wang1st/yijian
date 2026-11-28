@@ -16,6 +16,8 @@
 
 package dev.patrickgold.florisboard.app.main
 
+import dev.patrickgold.florisboard.ime.translation.mistake.MistakeStore
+import dev.patrickgold.florisboard.ime.translation.mistake.MistakePoint
 import dev.patrickgold.florisboard.app.design.Shape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -77,7 +79,21 @@ fun MainHomeScreen() {
     val isImeSelected by InputMethodUtils.observeIsFlorisboardSelected()
 
     var snap by remember { mutableStateOf<ReviewSnapshot?>(null) }
-    LaunchedEffect(Unit) { snap = ReviewStore.snapshot() }
+    // The point the learner keeps getting wrong is the headline, not the queue length: a card
+    // count says how much work is pending, a mistake says what is actually broken.
+    var focus by remember { mutableStateOf<MistakePoint?>(null) }
+    LaunchedEffect(Unit) {
+        snap = ReviewStore.snapshot()
+        focus = runCatching {
+            MistakeStore.allPoints()
+                .filter { !it.mastered }
+                .sortedWith(
+                    compareByDescending<MistakePoint> { it.stubborn }
+                        .thenByDescending { it.occurrences }
+                )
+                .firstOrNull()
+        }.getOrNull()
+    }
 
     FlorisScreenNg(
         title = "译键",
@@ -119,41 +135,47 @@ fun MainHomeScreen() {
 
             Spacer(modifier = Modifier.height(Space.xxl))
 
-            // The one thing the screen is about.
+            // What the screen is about: the mistake being repeated, named plainly.
+            val f = focus
             when {
                 s == null -> Text("…", style = type.display, color = colors.inkMuted)
-                pending == 0 && doneToday == 0 -> {
+                f != null -> {
                     Text(
-                        text = "还没有可练的句子",
-                        style = type.display,
-                        color = colors.ink,
+                        text = if (f.stubborn) "还在反复" else "最近在错",
+                        style = type.label,
+                        color = if (f.stubborn) colors.negative else colors.inkMuted,
                     )
+                    Spacer(modifier = Modifier.height(Space.xs))
+                    Text(text = f.label, style = type.display, color = colors.ink)
                     Spacer(modifier = Modifier.height(Space.sm))
                     Text(
-                        text = "用译键翻译几句英文，它们会自动变成复习卡片。",
-                        style = type.body,
+                        text = buildString {
+                            append("错过 ${f.occurrences} 次")
+                            if (f.history.isNotEmpty()) {
+                                append(" · 最近 ${f.history.size} 次对 ${f.history.count { it }} 次")
+                            }
+                            val wrong = f.wrongForms.firstOrNull()
+                            if (wrong != null && f.correctForm.isNotBlank()) append(" · $wrong → ${f.correctForm}")
+                        },
+                        style = type.small,
                         color = colors.inkMuted,
                     )
                 }
-                pending == 0 -> {
-                    Text("今天已经练完", style = type.display, color = colors.ink)
+                pending == 0 && doneToday == 0 -> {
+                    Text("还没有错题", style = type.display, color = colors.ink)
                     Spacer(modifier = Modifier.height(Space.sm))
                     Text(
-                        text = "$doneToday 张，全部过了一遍。明天再见。",
+                        "用译键翻译时被纠正过的用法会出现在这里。",
                         style = type.body,
                         color = colors.inkMuted,
                     )
                 }
                 else -> {
-                    Text("今天还有 $pending 张", style = type.display, color = colors.ink)
+                    Text("今天没有要复习的", style = type.display, color = colors.ink)
                     Spacer(modifier = Modifier.height(Space.sm))
                     Text(
-                        text = buildString {
-                            if (s.dueCount > 0) append("${s.dueCount} 张到期")
-                            if (s.dueCount > 0 && s.newCount > 0) append("，")
-                            if (s.newCount > 0) append("${s.newCount} 张新句子")
-                        },
-                        style = type.small,
+                        "$doneToday 张都过了一遍。",
+                        style = type.body,
                         color = colors.inkMuted,
                     )
                 }
@@ -161,18 +183,23 @@ fun MainHomeScreen() {
 
             Spacer(modifier = Modifier.height(Space.xl))
             PrimaryAction(
-                label = when {
-                    pending > 0 -> "开始练习"
-                    doneToday > 0 -> "再看一遍"
-                    else -> "去翻译"
-                },
+                label = if (f != null || pending > 0) "练这些错" else "去翻译",
                 onClick = {
                     navController.navigate(
-                        if (pending > 0 || doneToday > 0) Routes.Settings.ReviewPractice
-                        else Routes.Main.Home
+                        if (f != null || pending > 0) Routes.Settings.ReviewMistakes else Routes.Settings.Translation
                     )
                 },
             )
+
+            if (pending > 0) {
+                Spacer(modifier = Modifier.height(Space.md))
+                Text(
+                    text = "另有 $pending 张旧卡片到期",
+                    style = type.small,
+                    color = colors.inkMuted,
+                    modifier = Modifier.clickable { navController.navigate(Routes.Settings.ReviewPractice) },
+                )
+            }
 
             // Everything below is reference, set small enough not to compete.
             if (s != null) {

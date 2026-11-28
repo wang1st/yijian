@@ -348,6 +348,19 @@ private fun MistakeSummary(
                 Text(f.point.label, style = type.body, color = colors.ink)
                 Spacer(modifier = Modifier.height(Space.xs))
             }
+            Spacer(modifier = Modifier.height(Space.sm))
+            Text(
+                text = "明天会再考这几个",
+                style = type.small,
+                color = colors.inkMuted,
+            )
+        } else if (total > 0) {
+            Spacer(modifier = Modifier.height(Space.xl))
+            Text(
+                text = "这次全对，下次考得更晚一些",
+                style = type.small,
+                color = colors.positive,
+            )
         }
         Spacer(modifier = Modifier.weight(1f))
         BigAction("完成", onClick = onFinish)

@@ -55,8 +55,7 @@ import androidx.compose.ui.unit.sp
 import dev.patrickgold.florisboard.app.LocalNavController
 import dev.patrickgold.florisboard.app.Routes
 import dev.patrickgold.florisboard.app.components.FlorisScreenNg
-import dev.patrickgold.florisboard.ime.translation.review.MistakeKindStat
-import dev.patrickgold.florisboard.ime.translation.review.MistakeProfile
+import dev.patrickgold.florisboard.ime.translation.mistake.MistakePoint
 import dev.patrickgold.florisboard.ime.translation.review.ReviewCard
 import dev.patrickgold.florisboard.ime.translation.review.ReviewSnapshot
 import dev.patrickgold.florisboard.ime.translation.review.ReviewStore
@@ -76,12 +75,15 @@ fun ReviewHomeScreen() {
 
     var snapshot by remember { mutableStateOf<ReviewSnapshot?>(null) }
     var recent by remember { mutableStateOf<List<ReviewCard>>(emptyList()) }
-    var profile by remember { mutableStateOf<MistakeProfile?>(null) }
+    var weakPoints by remember { mutableStateOf<List<MistakePoint>>(emptyList()) }
 
     LaunchedEffect(Unit) {
         snapshot = ReviewStore.snapshot()
         recent = ReviewStore.allCards().sortedByDescending { it.entry.timestamp }.take(3)
-        profile = MistakeProfile.load()
+        weakPoints = runCatching {
+            MistakeStore.allPoints().filter { !it.mastered }
+                .sortedWith(compareByDescending<MistakePoint> { it.stubborn }.thenByDescending { it.occurrences })
+        }.getOrDefault(emptyList())
     }
 
     FlorisScreenNg(
@@ -165,16 +167,40 @@ fun ReviewHomeScreen() {
                     Figure("正确", "${s.accuracyToday}%")
                 }
 
-                // Mistake kinds, stated as progress rather than as bars to admire.
-                val p = profile
-                if (p != null && p.kinds.isNotEmpty()) {
+                // The actual points being failed, not four coarse categories: "very 不能修饰动词"
+                // is actionable, "语法" is not.
+                val points = weakPoints
+                if (points.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(Space.xl))
                     Rule()
                     Spacer(modifier = Modifier.height(Space.lg))
-                    Text(text = "易错点", style = type.label, color = colors.inkMuted)
+                    Text(
+                        text = "还要练的",
+                        style = type.label,
+                        color = colors.inkMuted,
+                        modifier = Modifier.clickable {
+                            navController.navigate(Routes.Settings.MistakeProgress)
+                        },
+                    )
                     Spacer(modifier = Modifier.height(Space.md))
-                    p.kinds.take(4).forEach { k ->
-                        MistakeKindLine(k)
+                    points.take(5).forEach { p ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = p.label,
+                                style = type.body,
+                                color = colors.ink,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text(
+                                text = when {
+                                    p.stubborn -> "还在反复"
+                                    p.correctStreak > 0 -> "连对 ${p.correctStreak}"
+                                    else -> "错 ${p.occurrences} 次"
+                                },
+                                style = type.small,
+                                color = if (p.stubborn) colors.negative else colors.inkMuted,
+                            )
+                        }
                         Spacer(modifier = Modifier.height(Space.sm))
                     }
                 }
@@ -219,20 +245,6 @@ fun ReviewHomeScreen() {
     }
 }
 
-/** One mistake kind: name, how far it has receded, nothing else. */
-@Composable
-private fun MistakeKindLine(k: MistakeKindStat) {
-    val colors = YijianTheme.colors
-    val type = YijianTheme.type
-    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(text = k.kind, style = type.body, color = colors.ink, modifier = Modifier.weight(1f))
-        Text(
-            text = if (k.mastered) "已掌握" else if (k.correctRun > 0) "连对 ${k.correctRun}" else "错 ${k.totalErrors}",
-            style = type.small,
-            color = if (k.mastered) colors.positive else colors.inkMuted,
-        )
-    }
-}
 
 /** A hairline rule, the only divider the language uses. */
 @Composable
