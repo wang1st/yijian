@@ -99,9 +99,11 @@ fun MistakePracticeScreen() {
     }
 
     fun advance(correct: Boolean) {
-        val item = retryItem ?: slots.getOrNull(index) ?: return
+        val item: PointWithExamples = retryItem ?: slots.getOrNull(index) ?: return
         if (!correct) {
-            val alreadyFailed = failures.any { f -> f.point.id == item.point.id }
+            // Explicit type on the lambda: `failures` is a delegated state property, and the
+            // compiler cannot derive the element type through the delegate here.
+            val alreadyFailed = failures.any { f: PointWithExamples -> f.point.id == item.point.id }
             if (!alreadyFailed) {
                 failures = failures + item
             }
