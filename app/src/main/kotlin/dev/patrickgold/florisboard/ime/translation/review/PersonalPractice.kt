@@ -161,13 +161,13 @@ internal class PersonalPractice(context: Context, name: String? = "personal_prac
         try {
             if (DatabaseUtils.queryNumEntries(db,"attempt","id=?",arrayOf(key)) == 0L) {
                 db.execSQL("INSERT INTO attempt VALUES(?,?,?,?,?,?,?)",
-                    arrayOf(key,task.id,task.skill,now,answer,verdict.outcome,verdict.message))
+                    arrayOf<Any>(key, task.id, task.skill, now, answer, verdict.outcome, verdict.message))
                 val prev = db.rawQuery("SELECT streak FROM schedule WHERE skill=?",arrayOf(task.skill)).use {
                     if (it.moveToFirst()) it.getInt(0) else 0
                 }
                 val streak = if (verdict.outcome == "pass") prev+1 else 0
                 val days = listOf(1,3,7,16,35)[streak.coerceAtMost(4)]
-                db.execSQL("INSERT OR REPLACE INTO schedule VALUES(?,?,?,?)",arrayOf(task.skill,now+days*DAY,streak,verdict.outcome))
+                db.execSQL("INSERT OR REPLACE INTO schedule VALUES(?,?,?,?)",arrayOf<Any>(task.skill, now + days * DAY, streak, verdict.outcome))
             }
             db.setTransactionSuccessful()
         } finally { db.endTransaction() }
