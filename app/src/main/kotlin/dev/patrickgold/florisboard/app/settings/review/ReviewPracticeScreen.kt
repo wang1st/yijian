@@ -16,6 +16,10 @@
 
 package dev.patrickgold.florisboard.app.settings.review
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.BoxWithConstraints
 import dev.patrickgold.florisboard.app.design.Shape
 import dev.patrickgold.florisboard.app.design.YijianTheme
 import dev.patrickgold.florisboard.app.design.Space
