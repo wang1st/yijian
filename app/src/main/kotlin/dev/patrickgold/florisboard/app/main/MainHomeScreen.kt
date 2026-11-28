@@ -148,7 +148,11 @@ fun MainHomeScreen() {
                     Text("今天还有 $pending 张", style = type.display, color = colors.ink)
                     Spacer(modifier = Modifier.height(Space.sm))
                     Text(
-                        text = "到期 ${s.dueCount} · 新句子 ${s.newCount}",
+                        text = buildString {
+                            if (s.dueCount > 0) append("${s.dueCount} 张到期")
+                            if (s.dueCount > 0 && s.newCount > 0) append("，")
+                            if (s.newCount > 0) append("${s.newCount} 张新句子")
+                        },
                         style = type.small,
                         color = colors.inkMuted,
                     )
@@ -234,7 +238,10 @@ private fun FigureRow(figures: List<Pair<String, String>>) {
     }
 }
 
-/** Seven days as a single line of type, not a bar chart. */
+/**
+ * The week as seven short rules, one per day, with the count underneath only where it is
+ * non-zero. Empty days are a faint mark, not a zero — the absence is the signal.
+ */
 @Composable
 private fun WeekLine(days: List<Int>) {
     val colors = YijianTheme.colors
@@ -243,21 +250,34 @@ private fun WeekLine(days: List<Int>) {
     val weekdays = listOf("一", "二", "三", "四", "五", "六", "日")
     Column {
         Text(text = "本周", style = type.label, color = colors.inkMuted)
-        Spacer(modifier = Modifier.height(Space.sm))
+        Spacer(modifier = Modifier.height(Space.md))
         Row(horizontalArrangement = Arrangement.spacedBy(Space.md)) {
             days.forEachIndexed { i, count ->
-                val active = count > 0
+                val isToday = i == days.lastIndex
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         text = weekdays[i % 7],
                         style = type.label,
-                        color = if (i == days.lastIndex) colors.ink else colors.inkMuted,
+                        color = if (isToday) colors.ink else colors.inkMuted,
                     )
-                    Spacer(modifier = Modifier.height(Space.hair))
+                    Spacer(modifier = Modifier.height(Space.xs))
+                    // A 2 dp bar whose height encodes the volume; zero days get a dot.
+                    Box(
+                        modifier = Modifier
+                            .size(width = 16.dp, height = 3.dp)
+                            .background(
+                                when {
+                                    count == 0 -> colors.rule
+                                    isToday -> colors.ink
+                                    else -> colors.inkMuted
+                                }
+                            ),
+                    )
+                    Spacer(modifier = Modifier.height(Space.xs))
                     Text(
-                        text = if (active) "$count" else "·",
-                        style = type.figure,
-                        color = if (active) colors.ink else colors.rule,
+                        text = if (count > 0) "$count" else "",
+                        style = type.small,
+                        color = colors.ink,
                     )
                 }
             }

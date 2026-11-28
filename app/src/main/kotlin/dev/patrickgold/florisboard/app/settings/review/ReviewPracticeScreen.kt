@@ -132,7 +132,7 @@ fun ReviewPracticeScreen() {
                 SessionPhase.LOADING -> Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center,
-                ) { CircularProgressIndicator(color = DuoGreen) }
+                ) { CircularProgressIndicator(color = YijianTheme.colors.inkMuted) }
 
                 SessionPhase.EMPTY -> SessionEmptyState()
 
@@ -455,11 +455,11 @@ private fun androidx.compose.foundation.layout.ColumnScope.AnswerArea(
                 .fillMaxWidth()
                 .heightIn(min = 68.dp)
                 .clip(RoundedCornerShape(12.dp))
-                .border(2.dp, duoBorder(), RoundedCornerShape(12.dp))
+                .border(1.dp, YijianTheme.colors.rule, Shape.sheet)
                 .padding(10.dp),
         ) {
             if (tiles.placed.isEmpty()) {
-                Text("点下面的单词拼出句子", fontSize = 13.sp, color = duoTextMuted())
+                Text("点下面的单词拼出句子", style = YijianTheme.type.small, color = YijianTheme.colors.inkMuted)
             } else {
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -496,31 +496,36 @@ private fun androidx.compose.foundation.layout.ColumnScope.AnswerArea(
                     }
                 }
             }
-            Spacer(modifier = Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                DuoSecondaryButton(
-                    "撤销",
-                    onClick = {
+            Spacer(modifier = Modifier.height(Space.md))
+            Row(horizontalArrangement = Arrangement.spacedBy(Space.xl)) {
+                Text(
+                    text = "撤销",
+                    style = YijianTheme.type.small,
+                    color = YijianTheme.colors.inkMuted,
+                    modifier = Modifier.clickable {
                         if (tiles.placed.isNotEmpty()) {
                             tiles.placed.removeAt(tiles.placed.lastIndex)
                             onTilesChanged()
                         }
                     },
-                    modifier = Modifier.weight(1f),
                 )
-                DuoSecondaryButton(
-                    "提示",
-                    onClick = {
+                Text(
+                    text = "提示",
+                    style = YijianTheme.type.small,
+                    color = YijianTheme.colors.inkMuted,
+                    modifier = Modifier.clickable {
                         if (tiles.placed.size < tiles.tiles.size) {
                             tiles.placed.add(tiles.placed.size)
                             onTilesChanged()
                         }
                     },
-                    modifier = Modifier.weight(1f),
                 )
-                TextButton(onClick = { session.toggleInputMode() }, modifier = Modifier.weight(1f)) {
-                    Text("打字", fontSize = 12.sp, color = DuoBlue, fontWeight = FontWeight.Bold)
-                }
+                Text(
+                    text = "打字",
+                    style = YijianTheme.type.small,
+                    color = YijianTheme.colors.inkMuted,
+                    modifier = Modifier.clickable { session.toggleInputMode() },
+                )
             }
         }
     } else {
@@ -534,7 +539,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.AnswerArea(
         )
         if (state.phase == SessionPhase.QUESTION && tiles != null) {
             TextButton(onClick = { session.toggleInputMode() }, modifier = Modifier.align(Alignment.End)) {
-                Text("改用点词拼句", fontSize = 12.sp, color = DuoBlue, fontWeight = FontWeight.Bold)
+                Text("改用点词拼句", style = YijianTheme.type.small, color = YijianTheme.colors.inkMuted)
             }
         }
     }
@@ -552,7 +557,7 @@ private fun SessionEmptyState() {
         Spacer(modifier = Modifier.height(12.dp))
         Text("今日没有待复习的卡片", fontSize = 20.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(6.dp))
-        Text("平时用译键翻译的句子会自动变成卡片。", fontSize = 13.sp, color = duoTextMuted())
+        Text("平时用译键翻译的句子会自动变成卡片。", style = YijianTheme.type.small, color = YijianTheme.colors.inkMuted)
     }
 }
 
