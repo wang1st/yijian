@@ -143,11 +143,22 @@ object MistakeStore {
      * so this runs on first launch (and when explicitly refreshed) rather than per correction.
      * Returns the number of points created.
      */
-    suspend fun importFromPracticeLog(force: Boolean = false): Int = withContext(Dispatchers.IO) {
+    suspend fun importFromPracticeLog(): Int = withContext(Dispatchers.IO) {
         mutex.withLock {
             val entries = EnglishTeacher.readEntriesStatic()
             if (entries.isEmpty()) return@withLock 0
-            if (!force && pointsFile.exists() && readPoints().isNotEmpty()) return@withLock 0
+            val points = readPoints()
+            val instances = readInstances()
+            val known = points.values.flatMapTo(mutableSetOf()) { it.importedKeys }
+            // Migrate visible examples written before imports tracked their source identities.
+            for ((pointId, examples) in instances.groupBy { it.pointId }) {
+                val point = points[pointId] ?: continue
+                if (point.importedKeys.isEmpty()) {
+                    val keys = examples.map { evidenceKey(it.timestamp, it.sourceSentence, it.wrong, it.right) }.toSet()
+                    points[pointId] = point.copy(importedKeys = keys)
+                    known.addAll(keys)
+                }
+            }
 
             val corrections = entries.flatMap { e ->
                 val fromErrors = e.corrections.map { c ->
@@ -181,20 +192,20 @@ object MistakeStore {
                     emptyList()
                 }
                 fromErrors + fromNote
-            }
+            }.filter { known.add(evidenceKey(it.timestamp, it.sentence, it.wrong, it.right)) }
             if (corrections.isEmpty()) return@withLock 0
 
             val grouped = MistakeGrouper.group(corrections)
             if (grouped.isEmpty()) return@withLock 0
 
-            val points = readPoints()
-            val instances = readInstances()
+            val assigned = mutableSetOf<Int>()
             var created = 0
 
             for (g in grouped) {
                 val existing = points[g.id]
+                val allSamples = g.sampleIndices.filter { assigned.add(it) }.mapNotNull { corrections.getOrNull(it) }
+                if (allSamples.isEmpty()) continue
                 if (existing == null) created++
-                val allSamples = g.sampleIndices.mapNotNull { corrections.getOrNull(it) }
                 val latest = allSamples.maxByOrNull { it.timestamp }
                 points[g.id] = (existing ?: MistakePoint(
                     id = g.id,
@@ -217,13 +228,17 @@ object MistakeStore {
                         .filter { it.isNotBlank() }
                         .distinct()
                         .take(6),
-                    occurrences = (existing?.occurrences ?: 0) + g.newFailures,
+                    occurrences = (existing?.occurrences ?: 0) + allSamples.size,
+                    importedKeys = existing?.importedKeys.orEmpty() + allSamples.map {
+                        evidenceKey(it.timestamp, it.sentence, it.wrong, it.right)
+                    },
                     lastFailedAt = maxOf(existing?.lastFailedAt ?: 0L, latest?.timestamp ?: 0L),
                 )
                 // Keep the sentences, newest first, for context while reviewing.
                 for (sample in allSamples.sortedByDescending { it.timestamp }) {
                     val already = instances.any {
-                        it.pointId == g.id && it.wrong == sample.wrong && it.timestamp == sample.timestamp
+                        it.pointId == g.id && it.sourceSentence == sample.sentence && it.wrong == sample.wrong &&
+                            it.right == sample.right && it.timestamp == sample.timestamp
                     }
                     if (!already) {
                         instances.add(
@@ -302,7 +317,7 @@ object MistakeStore {
                 val points = readPoints()
                 val instances = readInstances().groupBy { it.pointId }
                 points.values
-                    .filter { it.stage >= 0 || it.occurrences > 0 }
+                    .filter { it.dueAt <= now && (it.stage >= 0 || it.occurrences > 0) }
                     .sortedWith(
                         // Never-reviewed first, then stubborn, then by how overdue.
                         compareBy<MistakePoint> { it.stage >= 0 }
@@ -326,6 +341,12 @@ object MistakeStore {
         mutex.withLock { readPoints().values.sortedByDescending { it.lastFailedAt } }
     }
 
+    private fun evidenceKey(time: Long, sentence: String, wrong: String, right: String): String {
+        val fields = JSONArray().put(time).put(sentence).put(wrong).put(right).toString()
+        return java.security.MessageDigest.getInstance("SHA-256").digest(fields.toByteArray())
+            .joinToString("") { "%02x".format(it) }
+    }
+
     // ---- json -----------------------------------------------------------------------
 
     private fun pointToJson(p: MistakePoint): JSONObject = JSONObject().apply {
@@ -335,6 +356,7 @@ object MistakeStore {
         put("correctForm", p.correctForm)
         put("explanation", p.explanation)
         put("wrongForms", JSONArray().apply { p.wrongForms.forEach { put(it) } })
+        put("importedKeys", JSONArray(p.importedKeys))
         put("occurrences", p.occurrences)
         put("history", JSONArray().apply { p.history.forEach { put(it) } })
         put("stage", p.stage)
@@ -360,6 +382,9 @@ object MistakeStore {
             explanation = o.optString("explanation"),
             wrongForms = wrong,
             occurrences = o.optInt("occurrences"),
+            importedKeys = o.optJSONArray("importedKeys")?.let { a ->
+                (0 until a.length()).map { a.getString(it) }.toSet()
+            }.orEmpty(),
             history = history,
             stage = o.optInt("stage", -1),
             dueAt = o.optLong("dueAt"),

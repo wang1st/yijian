@@ -159,10 +159,10 @@ object ExpressionStore {
         mutex.withLock {
             val practised = readPractice()
             read()
-                .filter { it.isUpgrade }
+                .filter { it.isUpgrade && (practised.optJSONObject(it.better.lowercase())?.optLong("due") ?: 0L) <= System.currentTimeMillis() }
                 .sortedWith(
                     // Least-practised first, then newest: the goal is coverage, not mastery.
-                    compareBy<Expression> { practised[it.better.lowercase()] ?: 0 }
+                    compareBy<Expression> { practised.optJSONObject(it.better.lowercase())?.optInt("count") ?: practised.optInt(it.better.lowercase()) }
                         .thenByDescending { it.timestamp }
                 )
                 .take(limit)
@@ -188,25 +188,19 @@ object ExpressionStore {
         }.onFailure { flogError { "yijian expressions: write failed: ${it.message}" } }
     }
 
-    /** Counts how many times an expression has been practised, for the queue ordering. */
-    suspend fun recordPractice(expression: Expression) = withContext(Dispatchers.IO) {
+    suspend fun recordPractice(expression: Expression, recalled: Boolean) = withContext(Dispatchers.IO) {
         mutex.withLock {
-            val map = readPractice().toMutableMap()
-            val k = expression.better.lowercase()
-            map[k] = (map[k] ?: 0) + 1
-            runCatching {
-                val root = JSONObject()
-                map.forEach { (key, value) -> root.put(key, value) }
-                atomicRewriteFile(practiceFile, root.toString())
-            }.onFailure { flogError { "yijian expressions: practice write failed: ${it.message}" } }
+            val history = readPractice()
+            val key = expression.better.lowercase()
+            val previous = history.optJSONObject(key)
+            val count = previous?.optInt("count") ?: history.optInt(key)
+            val streak = if (recalled) (previous?.optInt("streak") ?: 0) + 1 else 0
+            val interval = listOf(1, 3, 7, 16, 35)[streak.coerceAtMost(4)]
+            history.put(key, JSONObject().put("count", count + 1).put("streak", streak)
+                .put("due", System.currentTimeMillis() + interval * 86_400_000L))
+            atomicRewriteFile(practiceFile, history.toString())
         }
     }
 
-    private fun readPractice(): Map<String, Int> {
-        if (!practiceFile.exists()) return emptyMap()
-        return runCatching {
-            val root = JSONObject(practiceFile.readText())
-            root.keys().asSequence().associateWith { root.optInt(it, 0) }
-        }.getOrDefault(emptyMap())
-    }
+    private fun readPractice(): JSONObject = if (practiceFile.exists()) JSONObject(practiceFile.readText()) else JSONObject()
 }

@@ -3,6 +3,9 @@ name: Translation editor regression tests
 on:
   pull_request:
     paths:
+      - 'app/src/main/kotlin/dev/patrickgold/florisboard/ime/translation/review/PersonalPractice.kt'
+      - 'app/src/main/kotlin/dev/patrickgold/florisboard/app/settings/review/**'
+      - 'app/src/androidTest/kotlin/dev/patrickgold/florisboard/ime/translation/review/**'
       - 'app/src/main/kotlin/dev/patrickgold/florisboard/ime/keyboard3/**'
       - 'app/src/main/assets/extensions/org.florisboard.k3.foundation/**'
       - 'app/src/androidTest/kotlin/dev/patrickgold/florisboard/ime/keyboard3/**'
@@ -38,4 +41,4 @@ jobs:
           api-level: 35
           arch: x86_64
           target: default
-          script: ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.patrickgold.florisboard.ime.translation.TranslationRangeTest,dev.patrickgold.florisboard.ime.keyboard3.DocumentTypingTest
+          script: ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.patrickgold.florisboard.ime.translation.TranslationRangeTest,dev.patrickgold.florisboard.ime.keyboard3.DocumentTypingTest,dev.patrickgold.florisboard.ime.translation.review.PersonalPracticeTest,dev.patrickgold.florisboard.ime.translation.review.WordBankTest

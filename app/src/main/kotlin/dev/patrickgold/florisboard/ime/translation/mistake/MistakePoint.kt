@@ -63,6 +63,7 @@ data class MistakePoint(
     val lastFailedAt: Long,
     /** Timestamp of the most recent review, succeeded or not. */
     val lastReviewedAt: Long,
+    val importedKeys: Set<String> = emptySet(),
 ) {
     /** Consecutive correct reviews at the end of [history]. */
     val correctStreak: Int

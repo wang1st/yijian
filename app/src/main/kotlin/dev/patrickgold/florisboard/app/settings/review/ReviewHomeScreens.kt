@@ -121,21 +121,14 @@ fun ReviewHomeScreen() {
             )
 
             Spacer(modifier = Modifier.height(Space.lg))
-            if ((st?.openPoints ?: 0) > 0) {
-                PagePrimaryAction("练这些错") {
-                    navController.navigate(Routes.Settings.ReviewMistakes)
-                }
-            } else {
-                Text(
-                    text = "没有待解决的错误。翻译几句会自动积累。",
-                    style = type.body,
-                    color = colors.inkMuted,
-                )
+            PagePrimaryAction("开始场景练习") {
+                navController.navigate(Routes.Settings.PersonalPractice)
             }
 
             // Two more ways in, each a full 48 dp row.
             Spacer(modifier = Modifier.height(Space.md))
             listOf(
+                "练这些错" to Routes.Settings.ReviewMistakes,
                 "练地道说法" to Routes.Settings.ExpressionPractice,
                 "我的表达" to Routes.Settings.Expressions,
                 "错误点" to Routes.Settings.MistakeProgress,

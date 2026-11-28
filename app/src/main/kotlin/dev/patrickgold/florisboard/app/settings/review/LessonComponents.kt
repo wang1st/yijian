@@ -350,13 +350,13 @@ internal fun LessonProgressBar(progress: Float, label: String) {
 
 /** A word-bank tile: 46 dp tall, 8 dp padding, flows across the line. */
 @Composable
-internal fun WordTile(text: String, onClick: () -> Unit) {
+internal fun WordTile(text: String, onClick: (() -> Unit)?) {
     AnswerSurface(
-        state = SurfaceState.Neutral,
+        state = if (onClick == null) SurfaceState.Recessed else SurfaceState.Neutral,
         onClick = onClick,
         horizontalPadding = 12.dp,
         verticalPadding = 0.dp,
-        modifier = Modifier.height(46.dp),
+        modifier = Modifier.height(48.dp),
     ) {
         Text(text = text, fontSize = 19.sp, lineHeight = 25.sp)
     }
@@ -364,15 +364,15 @@ internal fun WordTile(text: String, onClick: () -> Unit) {
 
 /** A consumed word in the answer well: greyed, lip-less, sunk — but still tappable to undo. */
 @Composable
-internal fun PlacedWordTile(text: String, onClick: () -> Unit) {
+internal fun PlacedWordTile(text: String, onClick: (() -> Unit)?) {
     Box(
         modifier = Modifier
-            .height(46.dp)
+            .height(48.dp)
             .padding(bottom = CardLip)
             .offset(y = CardLip)
             .clip(AnswerRadius)
             .background(if (isSystemInDarkTheme()) Color(0xFF26272B) else DuoSwan)
-            .clickable(onClick = onClick)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = 12.dp),
         contentAlignment = Alignment.Center,
     ) {

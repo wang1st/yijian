@@ -28,7 +28,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -39,22 +38,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -103,15 +95,7 @@ fun ReviewPracticeScreen() {
     }
     LaunchedEffect(Unit) { session.start() }
 
-    // Tiles are a view-level concern (shuffle order, placement), so they live here.
-    var tiles by remember { androidx.compose.runtime.mutableStateOf<TileState?>(null) }
-    var version by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     val st = session.state
-    LaunchedEffect(st.card?.id, st.typeName) {
-        val card = st.card ?: return@LaunchedEffect
-        tiles = if (st.typeName == "RECALL") TileState(card.entry.corrected) else null
-        version++
-    }
 
     val navController = dev.patrickgold.florisboard.app.LocalNavController.current
     val finished = st.phase == SessionPhase.DONE
@@ -151,9 +135,6 @@ fun ReviewPracticeScreen() {
                         session = session,
                         state = st,
                         card = card,
-                        tiles = tiles,
-                        version = version,
-                        onTilesChanged = { version++ },
                         onCheck = { answer -> scope.launch { session.check(answer) } },
                         onGrade = { g -> scope.launch { session.grade(g) } },
                     )
@@ -169,9 +150,6 @@ private fun androidx.compose.foundation.layout.ColumnScope.SessionBody(
     session: PracticeSession,
     state: SessionState,
     card: ReviewCard,
-    tiles: TileState?,
-    version: Int,
-    onTilesChanged: () -> Unit,
     onCheck: (String) -> Unit,
     onGrade: (Grade) -> Unit,
 ) {
@@ -195,6 +173,8 @@ private fun androidx.compose.foundation.layout.ColumnScope.SessionBody(
     val choices = state.aiExercise?.choices?.map { PickedChoice(it.first, it.second) }
         ?: state.exercise?.choices?.map { PickedChoice(it.text, it.correct) }
         ?: emptyList()
+
+    val tiles = if (choices.isEmpty()) rememberTileState(card.id, state.target) else null
 
     Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
         // The error this card exists to drill, named before the question.
@@ -231,15 +211,9 @@ private fun androidx.compose.foundation.layout.ColumnScope.SessionBody(
                     )
                 }
             }
-        } else {
-            AnswerArea(
-                session = session,
-                state = state,
-                card = card,
-                tiles = tiles,
-                version = version,
-                onTilesChanged = onTilesChanged,
-            )
+        } else if (tiles != null) {
+            WordBankAnswer(tiles, editable = state.phase == SessionPhase.QUESTION,
+                onPlaced = session::markAnswerStarted, showHint = true)
         }
 
         Spacer(modifier = Modifier.height(Space.xl))
@@ -257,15 +231,10 @@ private fun androidx.compose.foundation.layout.ColumnScope.SessionBody(
     // One action per state: CHECK (disabled until an answer exists) then CONTINUE.
     // Grading is automatic — the self-assessment row is gone, the diff decides.
     if (state.phase == SessionPhase.QUESTION && choices.isEmpty()) {
-        val canCheck = if (state.inputMode == InputMode.TILES) {
-            tiles?.isComplete == true
-        } else {
-            state.typed.isNotBlank()
-        }
         PageAction(
             text = "检查",
-            enabled = canCheck,
-            onClick = { onCheck(if (state.inputMode == InputMode.TILES) tiles?.answer() ?: "" else state.typed) },
+            enabled = tiles?.placed?.isNotEmpty() == true,
+            onClick = { tiles?.let { onCheck(it.answer()) } },
         )
     } else if (state.canAdvance) {
         PageAction(
@@ -435,113 +404,6 @@ private fun PageAction(text: String, enabled: Boolean, onClick: () -> Unit) {
             fontWeight = FontWeight.Medium,
             color = if (enabled) colors.onAccent else colors.inkMuted,
         )
-    }
-}
-
-
-/** Word tiles or a text field, depending on how the learner wants to answer. */
-@Composable
-private fun androidx.compose.foundation.layout.ColumnScope.AnswerArea(
-    session: PracticeSession,
-    state: SessionState,
-    card: ReviewCard,
-    tiles: TileState?,
-    version: Int,
-    onTilesChanged: () -> Unit,
-) {
-    if (state.inputMode == InputMode.TILES && tiles != null) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 68.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .border(1.dp, YijianTheme.colors.rule, Shape.sheet)
-                .padding(10.dp),
-        ) {
-            if (tiles.placed.isEmpty()) {
-                Text("点下面的单词拼出句子", style = YijianTheme.type.small, color = YijianTheme.colors.inkMuted)
-            } else {
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    key(version) {
-                        tiles.placed.forEachIndexed { pos, source ->
-                            PlacedWordTile(text = tiles.tiles[source]) {
-                                if (state.phase == SessionPhase.QUESTION) {
-                                    tiles.placed.removeAt(pos)
-                                    onTilesChanged()
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        if (state.phase == SessionPhase.QUESTION) {
-            Spacer(modifier = Modifier.height(12.dp))
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                key(version) {
-                    tiles.tiles.forEachIndexed { source, tile ->
-                        if (source !in tiles.placed) {
-                            WordTile(text = tile) {
-                                tiles.placed.add(source)
-                                session.markAnswerStarted()
-                                onTilesChanged()
-                            }
-                        }
-                    }
-                }
-            }
-            Spacer(modifier = Modifier.height(Space.md))
-            Row(horizontalArrangement = Arrangement.spacedBy(Space.xl)) {
-                Text(
-                    text = "撤销",
-                    style = YijianTheme.type.small,
-                    color = YijianTheme.colors.inkMuted,
-                    modifier = Modifier.clickable {
-                        if (tiles.placed.isNotEmpty()) {
-                            tiles.placed.removeAt(tiles.placed.lastIndex)
-                            onTilesChanged()
-                        }
-                    },
-                )
-                Text(
-                    text = "提示",
-                    style = YijianTheme.type.small,
-                    color = YijianTheme.colors.inkMuted,
-                    modifier = Modifier.clickable {
-                        if (tiles.placed.size < tiles.tiles.size) {
-                            tiles.placed.add(tiles.placed.size)
-                            onTilesChanged()
-                        }
-                    },
-                )
-                Text(
-                    text = "打字",
-                    style = YijianTheme.type.small,
-                    color = YijianTheme.colors.inkMuted,
-                    modifier = Modifier.clickable { session.toggleInputMode() },
-                )
-            }
-        }
-    } else {
-        OutlinedTextField(
-            value = state.typed,
-            onValueChange = { session.setTyped(it) },
-            enabled = state.phase == SessionPhase.QUESTION,
-            placeholder = { Text("打出对应的英文…") },
-            maxLines = 3,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        if (state.phase == SessionPhase.QUESTION && tiles != null) {
-            TextButton(onClick = { session.toggleInputMode() }, modifier = Modifier.align(Alignment.End)) {
-                Text("改用点词拼句", style = YijianTheme.type.small, color = YijianTheme.colors.inkMuted)
-            }
-        }
     }
 }
 

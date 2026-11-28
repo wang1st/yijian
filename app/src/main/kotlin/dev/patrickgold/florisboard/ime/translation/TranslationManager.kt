@@ -18,6 +18,7 @@ package dev.patrickgold.florisboard.ime.translation
 
 import androidx.compose.ui.graphics.vector.ImageVector
 import dev.patrickgold.florisboard.FlorisApplication
+import dev.patrickgold.florisboard.ime.translation.review.PersonalPractice
 import dev.patrickgold.florisboard.R
 import dev.patrickgold.florisboard.app.FlorisPreferenceStore
 import dev.patrickgold.florisboard.ime.editor.InputAttributes
@@ -715,6 +716,14 @@ class TranslationManager(
                     corrections = result.corrections,
                     note = result.note,
                 )
+            }
+        }
+        if (range != null && result.corrections.isEmpty() && result.note.isBlank()) {
+            val state = imeController.snapshotState()
+            if (!state.flags.isIncognitoMode && preeditActive(state)) {
+                scope.launch(Dispatchers.IO) {
+                    runCatching { PersonalPractice.shared.observe(english, result.corrected) }
+                }
             }
         }
         this.candidates.value = candidates.mapIndexed { i, t ->

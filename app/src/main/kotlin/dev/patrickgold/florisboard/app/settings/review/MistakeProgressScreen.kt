@@ -66,7 +66,7 @@ fun MistakeProgressScreen() {
         // One-time cleanup of entries recorded before the "only corrections become practice"
         // rule, then re-import so points reflect the pruned log.
         runCatching { EnglishTeacher.pruneCleanEntriesStatic() }
-        runCatching { MistakeStore.importFromPracticeLog(force = true) }
+        runCatching { MistakeStore.importFromPracticeLog() }
         points = MistakeStore.allPoints()
     }
 

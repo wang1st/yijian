@@ -71,6 +71,7 @@ import dev.patrickgold.florisboard.app.settings.localization.SelectLocaleScreen
 import dev.patrickgold.florisboard.app.settings.localization.SubtypeEditorScreen
 import dev.patrickgold.florisboard.app.settings.media.MediaScreen
 import dev.patrickgold.florisboard.app.settings.review.ExpressionLibraryScreen
+import dev.patrickgold.florisboard.app.settings.review.PersonalPracticeScreen
 import dev.patrickgold.florisboard.app.settings.review.ExpressionPracticeScreen
 import dev.patrickgold.florisboard.app.settings.review.MistakePracticeScreen
 import dev.patrickgold.florisboard.app.settings.review.MistakeProgressScreen
@@ -212,6 +213,14 @@ object Routes {
         @Serializable
         @Deeplink("settings/review/expression-practice")
         object ExpressionPractice
+
+        @Serializable
+        @Deeplink("settings/review/personal-practice")
+        object PersonalPractice
+
+        @Serializable
+        @Deeplink("settings/review/practice-pattern")
+        data class PatternPractice(val patternId: String)
 
         @Serializable
         @Deeplink("settings/typing")
@@ -377,6 +386,10 @@ object Routes {
             composableWithDeepLink(Settings.ReviewMistakes::class) { MistakePracticeScreen() }
             composableWithDeepLink(Settings.MistakeProgress::class) { MistakeProgressScreen() }
             composableWithDeepLink(Settings.Expressions::class) { ExpressionLibraryScreen() }
+            composableWithDeepLink(Settings.PatternPractice::class) { entry ->
+                PersonalPracticeScreen(entry.toRoute<Settings.PatternPractice>().patternId)
+            }
+            composableWithDeepLink(Settings.PersonalPractice::class) { PersonalPracticeScreen() }
             composableWithDeepLink(Settings.ExpressionPractice::class) { ExpressionPracticeScreen() }
 
             composableWithDeepLink(Settings.Typing::class) { TypingScreen() }
