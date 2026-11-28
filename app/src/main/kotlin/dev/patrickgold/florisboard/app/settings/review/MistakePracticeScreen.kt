@@ -176,7 +176,7 @@ fun MistakePracticeScreen() {
                 else -> {
                     // Explicit type: the ?: chain through two delegated states resolves to
                     // Any without it, and every later member access then fails.
-                    val item: PointWithExamples? = retryItem ?: slots.getOrNull(index)
+                    val item: PointWithExamples? = retryItem ?: slots.getOrNull(index)?.item
                     if (item == null) return@Column
 
                     SessionProgress(
