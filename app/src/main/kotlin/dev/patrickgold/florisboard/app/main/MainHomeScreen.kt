@@ -16,6 +16,7 @@
 
 package dev.patrickgold.florisboard.app.main
 
+import androidx.compose.foundation.layout.heightIn
 import dev.patrickgold.florisboard.ime.translation.mistake.MistakeStore
 import dev.patrickgold.florisboard.ime.translation.mistake.MistakePoint
 import dev.patrickgold.florisboard.app.design.Shape
@@ -201,13 +202,22 @@ fun MainHomeScreen() {
                 )
             }
 
-            Spacer(modifier = Modifier.height(Space.md))
-            Text(
-                text = "练地道说法",
-                style = type.body,
-                color = colors.ink,
-                modifier = Modifier.clickable { navController.navigate(Routes.Settings.ExpressionPractice) },
-            )
+            Spacer(modifier = Modifier.height(Space.sm))
+            // Full-width tappable row: a bare Text with clickable only covers the glyphs, which
+            // is a target far below the 48 dp minimum and easy to miss.
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .clickable { navController.navigate(Routes.Settings.ExpressionPractice) },
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                Text(
+                    text = "练地道说法",
+                    style = type.body,
+                    color = colors.ink,
+                )
+            }
 
             // Everything below is reference, set small enough not to compete.
             if (s != null) {

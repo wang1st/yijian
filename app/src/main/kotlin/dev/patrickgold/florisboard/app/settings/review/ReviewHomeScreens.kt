@@ -16,6 +16,7 @@
 
 package dev.patrickgold.florisboard.app.settings.review
 
+import androidx.compose.foundation.layout.heightIn
 import dev.patrickgold.florisboard.ime.translation.mistake.MistakeStore
 import dev.patrickgold.florisboard.app.design.Shape
 import androidx.compose.foundation.background
@@ -137,32 +138,23 @@ fun ReviewHomeScreen() {
 
             // Two more ways in, set as text: practising your own recurring mistakes, and
             // seeing whether they are actually going away.
-            Spacer(modifier = Modifier.height(Space.xl))
-            Row(horizontalArrangement = Arrangement.spacedBy(Space.xxl)) {
-                Text(
-                    text = "错题练习",
-                    style = type.body,
-                    color = colors.ink,
-                    modifier = Modifier.clickable {
-                        navController.navigate(Routes.Settings.ReviewMistakes)
-                    },
-                )
-                Text(
-                    text = "错误点",
-                    style = type.body,
-                    color = colors.ink,
-                    modifier = Modifier.clickable {
-                        navController.navigate(Routes.Settings.MistakeProgress)
-                    },
-                )
-                Text(
-                    text = "我的表达",
-                    style = type.body,
-                    color = colors.ink,
-                    modifier = Modifier.clickable {
-                        navController.navigate(Routes.Settings.Expressions)
-                    },
-                )
+            Spacer(modifier = Modifier.height(Space.md))
+            // Three whole rows rather than three bare texts: each is a navigation target and
+            // needs a 48 dp touch area, not just the width of its glyphs.
+            listOf(
+                "错题练习" to Routes.Settings.ReviewMistakes,
+                "错误点" to Routes.Settings.MistakeProgress,
+                "我的表达" to Routes.Settings.Expressions,
+            ).forEach { (label, route) ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .clickable { navController.navigate(route as Any) },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(text = label, style = type.body, color = colors.ink)
+                }
             }
 
             if (s != null) {
