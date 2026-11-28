@@ -193,9 +193,3 @@ private fun PointRow(p: MistakePoint) {
         }
     }
 }
-
-@Composable
-private fun Rule() {
-    val colors = YijianTheme.colors
-    Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(colors.rule))
-}
