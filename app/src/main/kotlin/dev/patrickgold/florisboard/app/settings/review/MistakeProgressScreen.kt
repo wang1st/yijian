@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import dev.patrickgold.florisboard.app.components.FlorisScreenNg
 import dev.patrickgold.florisboard.app.design.Space
 import dev.patrickgold.florisboard.app.design.YijianTheme
+import dev.patrickgold.florisboard.ime.translation.EnglishTeacher
 import dev.patrickgold.florisboard.ime.translation.mistake.MistakePoint
 import dev.patrickgold.florisboard.ime.translation.mistake.MistakeStore
 
@@ -62,7 +63,10 @@ fun MistakeProgressScreen() {
 
     var points by remember { mutableStateOf<List<MistakePoint>?>(null) }
     LaunchedEffect(Unit) {
-        runCatching { MistakeStore.importFromPracticeLog() }
+        // One-time cleanup of entries recorded before the "only corrections become practice"
+        // rule, then re-import so points reflect the pruned log.
+        runCatching { EnglishTeacher.pruneCleanEntriesStatic() }
+        runCatching { MistakeStore.importFromPracticeLog(force = true) }
         points = MistakeStore.allPoints()
     }
 

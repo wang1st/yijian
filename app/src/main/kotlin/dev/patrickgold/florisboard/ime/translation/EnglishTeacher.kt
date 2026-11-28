@@ -102,6 +102,29 @@ class EnglishTeacher {
          * Reads the practice log without instantiating the teacher (the report tab only needs
          * the data, not the recording/email machinery).
          */
+        /**
+         * Drops entries recorded before the "only corrections become practice" rule.
+         *
+         * That rule used to be "every finished sentence", so sentences already phrased well
+         * became review cards asking the learner to re-prove something they had just got
+         * right. Static so screens can prune without owning a teacher instance.
+         *
+         * @return how many entries were removed.
+         */
+        suspend fun pruneCleanEntriesStatic(): Int = withContext(Dispatchers.IO) {
+            val file = File(dev.patrickgold.florisboard.FlorisApplication.getHack().filesDir, "yijian_practice.jsonl")
+            if (!file.exists()) return@withContext 0
+            val entries = file.readLines().mapNotNull { line ->
+                runCatching { PracticeEntry.fromJson(JSONObject(line)) }.getOrNull()
+            }
+            val keep = entries.filter { it.corrections.isNotEmpty() || it.note.isNotBlank() }
+            val removed = entries.size - keep.size
+            if (removed > 0) {
+                atomicRewriteFile(file, keep.joinToString("") { it.toJson().toString() + "\n" })
+            }
+            removed
+        }
+
         suspend fun readEntriesStatic(): List<PracticeEntry> = withContext(Dispatchers.IO) {
             val file = File(dev.patrickgold.florisboard.FlorisApplication.getHack().filesDir, "yijian_practice.jsonl")
             if (!file.exists()) return@withContext emptyList()
@@ -168,6 +191,7 @@ class EnglishTeacher {
           }
         }
     }
+
 
     /** All recorded entries (oldest first). */
     suspend fun readEntries(): List<PracticeEntry> = withContext(Dispatchers.IO) {

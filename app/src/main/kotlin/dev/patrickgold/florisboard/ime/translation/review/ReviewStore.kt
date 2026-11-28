@@ -117,7 +117,11 @@ object ReviewStore {
     /** Collapses the practice log into one card per distinct corrected sentence. */
     private fun buildCards(): List<ReviewCard> {
         val grouped = readPracticeEntries()
+            // Only sentences that were wrong become cards. A sentence the learner already
+            // phrased well has nothing to review, and including it would mean asking them to
+            // re-prove a thing they got right — which also teaches them to distrust the queue.
             .filter { it.corrected.isNotBlank() && it.translation.isNotBlank() }
+            .filter { it.corrections.isNotEmpty() || it.note.isNotBlank() }
             .groupBy { cardId(it.corrected) }
         val state = readSrs()
         return grouped.map { (id, entries) ->

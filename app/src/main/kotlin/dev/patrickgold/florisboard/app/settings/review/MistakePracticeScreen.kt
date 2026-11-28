@@ -84,6 +84,7 @@ fun MistakePracticeScreen() {
     var retryItem by remember { mutableStateOf<PointWithExamples?>(null) }
 
     LaunchedEffect(Unit) {
+        runCatching { dev.patrickgold.florisboard.ime.translation.EnglishTeacher.pruneCleanEntriesStatic() }
         runCatching { MistakeStore.importFromPracticeLog() }
         val due = MistakeStore.duePoints()
         slots = MistakeSession.build(due)

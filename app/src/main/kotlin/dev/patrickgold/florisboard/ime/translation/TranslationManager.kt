@@ -695,15 +695,22 @@ class TranslationManager(
             raw.trim()
         }.filter { it.isNotBlank() }
         check(candidates.isNotEmpty()) { "模型没有给出译文" }
-        // Feed the private English teacher: every finished sentence becomes a practice record.
-        runCatching {
-            teacher.record(
-                original = english,
-                corrected = result.corrected,
-                translation = candidates.first(),
-                corrections = result.corrections,
-                note = result.note,
-            )
+        // Only sentences that actually needed fixing become practice material.
+        //
+        // A sentence the learner already phrased well has nothing to drill: putting it into the
+        // review queue would ask them to prove something they just demonstrated, and it would
+        // dilute the queue with cards that are already known. The rule is the sentence was
+        // wrong, not the sentence existed.
+        if (result.corrections.isNotEmpty()) {
+            runCatching {
+                teacher.record(
+                    original = english,
+                    corrected = result.corrected,
+                    translation = candidates.first(),
+                    corrections = result.corrections,
+                    note = result.note,
+                )
+            }
         }
         this.candidates.value = candidates.mapIndexed { i, t ->
             TranslationSuggestionCandidate(
