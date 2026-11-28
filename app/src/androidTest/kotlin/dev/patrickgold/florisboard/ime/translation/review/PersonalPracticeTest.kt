@@ -2,7 +2,10 @@ package dev.patrickgold.florisboard.ime.translation.review
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import org.json.JSONArray
 import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Locale
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -53,6 +56,36 @@ class PersonalPracticeTest {
             assertEquals(0, fresh.timesSeen)
             assertNotEquals(first.id, fresh.id)
             assertNotEquals(next.id, fresh.id)
+        }
+    }
+
+    @Test fun homeAbstractsRepeatedMistakesAndSchedulesANewSituation() {
+        val now = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.ROOT).parse("2026-06-10 12:00")!!.time
+        val seed = pack()
+        val rows = seed.getJSONArray("records")
+        fun add(id: String, original: String, better: String, date: String, why: String) {
+            rows.put(JSONObject().put("id", id).put("at", date).put("original", original).put("better", better)
+                .put("corrections", JSONArray().put(JSONObject().put("kind", "语法").put("detail", why))))
+        }
+        add("m1","I bought coat","I bought a coat","2026-06-09 10:00","缺少冠词")
+        add("dup","I bought coat","I bought a coat","2026-06-09 10:01","缺少冠词")
+        add("m2","Please bring umbrella","Please bring an umbrella","2026-06-10 09:00","不定冠词")
+        add("m3","She walk","She walks","2026-06-10 11:00","第三人称单数")
+        add("old","Another noun","Another noun","2025-01-01 00:00","缺少冠词")
+        PersonalPractice(context,null).use { db ->
+            db.importPack(seed)
+            val home = db.homePractice(emptyList(), now)
+            assertEquals("articles",home.focus!!.pattern.id)
+            assertEquals(2,home.focus!!.sentences)
+            val task = home.practice.task!!
+            assertEquals("pattern/articles",task.skill)
+            assertFalse(task.reference.contains("coat"))
+            assertFalse(task.reference.contains("umbrella"))
+            assertEquals(task.id,db.homePractice(emptyList(),now, "articles").practice.task!!.id)
+            db.record("pattern-first",task,task.reference,Verdict("pass","OK"),now)
+            assertEquals("s",db.homePractice(emptyList(), now).practice.task!!.skill)
+            assertNotEquals(task.id,db.homePractice(emptyList(), now + 3*day).practice.task!!.id)
+            assertNull(db.homePractice(emptyList(),now+30*day).focus)
         }
     }
 

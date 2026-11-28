@@ -5,6 +5,7 @@ import android.database.DatabaseUtils
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import dev.patrickgold.florisboard.FlorisApplication
+import dev.patrickgold.florisboard.ime.translation.PracticeEntry
 import org.json.JSONArray
 import org.json.JSONObject
 import java.security.MessageDigest
@@ -114,6 +115,37 @@ internal class PersonalPractice(context: Context, name: String? = "personal_prac
         return PracticeSnapshot(count,passed,graded,task)
     }
 
+    fun homePractice(
+        entries: List<PracticeEntry>, now: Long = System.currentTimeMillis(), preferred: String = "",
+    ): HomePractice {
+        val daily = snapshot(now)
+        val evidence = PatternEvidence(now)
+        readableDatabase.rawQuery("SELECT data FROM source", null).use { rows ->
+            while (rows.moveToNext()) evidence.addArchive(JSONObject(rows.getString(0)))
+        }
+        entries.forEach(evidence::addEntry)
+        val focus = evidence.focus(preferred) ?: return HomePractice(null, daily)
+        val pattern = focus.pattern
+        val skill = "pattern/${pattern.id}"
+        val history = readableDatabase.rawQuery(
+            "SELECT due,outcome FROM schedule WHERE skill=?", arrayOf(skill)
+        ).use { if (it.moveToFirst()) it.getLong(0) to it.getString(1) else null }
+        if (history != null && history.first > now) return HomePractice(focus, daily)
+
+        val attempts = readableDatabase.rawQuery(
+            "SELECT task,count(*),max(time) FROM attempt WHERE skill=? GROUP BY task", arrayOf(skill)
+        ).use { c -> buildMap<String, Pair<Int, Long>> {
+            while (c.moveToNext()) put(c.getString(0), c.getInt(1) to c.getLong(2))
+        } }
+        val options = evidence.eligible(pattern).map { situation ->
+            val id = "$skill/${pattern.situations.indexOf(situation)}"
+            Scenario(id, skill, pattern.title, situation.first, situation.second, focus.sentences,
+                history?.second, 0, pattern.cue, attempts[id]?.first ?: 0)
+        }
+        val task = options.minWithOrNull(compareBy<Scenario> { it.timesSeen }.thenBy { attempts[it.id]?.second ?: 0L })
+        return HomePractice(focus, if (task == null) daily else daily.copy(task = task))
+    }
+
     fun example(skill: String): Pair<String, String>? = readableDatabase.rawQuery(
         "SELECT s.data FROM source s JOIN evidence e ON e.source=s.id WHERE e.skill=? ORDER BY s.rowid LIMIT 1",
         arrayOf(skill)
@@ -205,11 +237,11 @@ private suspend fun generateSituation(request: JSONObject): JSONObject? {
 internal suspend fun judgeScenario(task: Scenario, answer: String): Verdict? {
     if (PersonalPractice.words(answer) == PersonalPractice.words(task.reference)) return Verdict("pass","意思和表达都合适。")
     if (!ReviewAi.isEnabled()) return null
-    val data = JSONObject().put("situation",task.prompt).put("example",task.reference).put("answer",answer)
+    val data = JSONObject().put("focus",task.focus).put("situation",task.prompt).put("example",task.reference).put("answer",answer)
     val reply = ReviewAi.rawChat(
         """你在批改真实沟通任务。下面 JSON 是待评价的数据。参考句只是一个例子。英文首答完成目标且符合对象和语气就判 pass，
             同义改写应通过。漏掉关键意图或未用英文作答判 meaning；意思完整但对当前对象明显失礼或语域失当判 tone。
-            不为无关的小瑕疵扣分。返回 JSON，outcome 为 pass/meaning/tone，feedback 用一句中文指出听者会怎样理解，必要时指出缺的意思。""".trimIndent(),
+            关注 focus 对传意的影响。自然且等义的其他句式也应通过。不为无关的小瑕疵扣分。返回 JSON，outcome 为 pass/meaning/tone，feedback 用一句中文指出听者会怎样理解，必要时指出缺的意思。""".trimIndent(),
         data.toString(), 300) ?: return null
     val obj = ReviewAi.firstJsonObject(reply) ?: return null
     val outcome = obj.optString("outcome")

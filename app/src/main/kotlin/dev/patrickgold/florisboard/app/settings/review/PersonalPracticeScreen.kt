@@ -18,11 +18,12 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import dev.patrickgold.florisboard.ime.translation.EnglishTeacher
 import org.json.JSONObject
 import java.util.UUID
 
 @Composable
-fun PersonalPracticeScreen() {
+fun PersonalPracticeScreen(initialPattern: String? = null) {
     val colors = YijianTheme.colors
     val type = YijianTheme.type
     val resolver = LocalContext.current.contentResolver
@@ -35,7 +36,11 @@ fun PersonalPracticeScreen() {
 
     LaunchedEffect(refresh) {
         try {
-            data = withContext(Dispatchers.IO) { db.nextRound() }
+            data = withContext(Dispatchers.IO) {
+                if (refresh == 0 && initialPattern != null) {
+                    db.homePractice(EnglishTeacher.readEntriesStatic(), preferred = initialPattern).practice
+                } else db.nextRound()
+            }
         } catch (e: CancellationException) { throw e }
         catch (e: Exception) { notice = "暂时无法读取练习进度。" }
     }
@@ -74,7 +79,7 @@ fun PersonalPracticeScreen() {
             verticalArrangement = Arrangement.spacedBy(Space.md)) {
             val current = data
             if (current != null) {
-                if (current.sources > 0) {
+                if (current.sources > 0 || current.task != null || current.graded > 0 || refresh > 0) {
                     Text("近 28 天首答通过 ${current.passed} / ${current.graded}", style = type.label, color = colors.inkMuted)
                     val task = current.task
                     if (task == null) Text("今天的场景都练过了。到期后，这里会出现下一次练习。", style = type.title, color = colors.ink)
@@ -86,7 +91,7 @@ fun PersonalPracticeScreen() {
                             )
                         }, { notice = ""; refresh++ })
                     }
-                    Text("已载入 ${current.sources} 条历史记录", style = type.small, color = colors.inkMuted)
+                    if (current.sources > 0) Text("已载入 ${current.sources} 条历史记录", style = type.small, color = colors.inkMuted)
                 } else {
                     Text("从你自己想说的话开始", style = type.title, color = colors.ink)
                     Text("导入个人练习库后，你会遇到和过去相似的新情境。点选单词拼出回答，再看反馈。", style = type.body, color = colors.inkMuted)
@@ -166,7 +171,8 @@ private fun ScenarioExercise(task: Scenario, busy: Boolean, setBusy: (Boolean) -
         Text(task.reference, style = type.title, color = colors.positive)
         Button(onClick = advance, enabled = !busy) { Text("下一题") }
         val past = example
-        if (past == null) TextButton(onClick = {
+        if (task.skill.startsWith("pattern/")) Text(task.focus, style = type.small, color = colors.inkMuted)
+        else if (past == null) TextButton(onClick = {
             scope.launch { example = withContext(Dispatchers.IO) { PersonalPractice.shared.example(task.skill) } }
         }) { Text("回看一条相关的历史原句") }
         else {

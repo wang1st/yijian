@@ -18,7 +18,11 @@ package dev.patrickgold.florisboard.app.main
 
 import androidx.compose.foundation.layout.heightIn
 import dev.patrickgold.florisboard.ime.translation.review.PersonalPractice
-import dev.patrickgold.florisboard.ime.translation.review.PracticeSnapshot
+import dev.patrickgold.florisboard.ime.translation.review.HomePractice
+import dev.patrickgold.florisboard.ime.translation.EnglishTeacher
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import dev.patrickgold.florisboard.app.design.Shape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -39,7 +43,6 @@ import androidx.compose.material3.Text
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -82,10 +85,14 @@ fun MainHomeScreen() {
     val isImeSelected by InputMethodUtils.observeIsFlorisboardSelected()
 
     var stats by remember { mutableStateOf<ReviewStats?>(null) }
-    var practice by remember { mutableStateOf<PracticeSnapshot?>(null) }
-    LaunchedEffect(Unit) {
-        practice = withContext(Dispatchers.IO) { PersonalPractice.shared.snapshot() }
-        stats = runCatching { ReviewStatsSource.snapshot() }.getOrNull()
+    var home by remember { mutableStateOf<HomePractice?>(null) }
+    val scope = rememberCoroutineScope()
+    LifecycleResumeEffect(Unit) {
+        val job = scope.launch {
+            home = withContext(Dispatchers.IO) { PersonalPractice.shared.homePractice(EnglishTeacher.readEntriesStatic()) }
+            stats = ReviewStatsSource.snapshot()
+        }
+        onPauseOrDispose { job.cancel() }
     }
 
     FlorisScreenNg(
@@ -123,28 +130,42 @@ fun MainHomeScreen() {
             }
 
             Spacer(modifier = Modifier.height(Space.xxl))
-            val snapshot = practice
+            val focus = home?.focus
+            val snapshot = home?.practice
             val task = snapshot?.task
-            Text("今天的场景", style = type.label, color = colors.inkMuted)
+            val related = focus != null && task?.skill == "pattern/${focus.pattern.id}"
+
+            Text("最近在错", style = type.label, color = colors.inkMuted)
             Spacer(modifier = Modifier.height(Space.sm))
-            Text(when {
-                snapshot == null -> "…"
-                task != null -> task.title
-                snapshot.sources > 0 -> "今天的场景练完了"
-                else -> "从你的英语记录开始"
-            }, style = type.display, color = colors.ink)
-            Spacer(modifier = Modifier.height(Space.sm))
-            Text(when {
-                task != null -> task.prompt
-                snapshot != null && snapshot.sources > 0 -> "近 28 天首答通过 ${snapshot.passed} / ${snapshot.graded}"
-                else -> "导入个人练习库，在新情境里试试自己想说的话。"
-            }, style = type.body, color = colors.inkMuted)
+            if (focus != null) {
+                Text(focus.pattern.title, style = type.display, color = colors.ink)
+                Spacer(modifier = Modifier.height(Space.sm))
+                Text(focus.pattern.cue, style = type.body, color = colors.ink)
+                Spacer(modifier = Modifier.height(Space.sm))
+                Text("近 28 天 · ${focus.sentences} 个不同原句涉及这项用法",
+                    style = type.small, color = colors.inkMuted)
+            } else {
+                Text(if (home == null) "正在整理练习记录…" else "近 28 天还没有可归纳的用法",
+                    style = type.body, color = colors.inkMuted)
+            }
 
             Spacer(modifier = Modifier.height(Space.xl))
-            PrimaryAction(
-                label = "开始场景练习",
-                onClick = { navController.navigate(Routes.Settings.PersonalPractice) },
-            )
+            RuleLine()
+            Spacer(modifier = Modifier.height(Space.lg))
+            Text("今天的场景", style = type.label, color = colors.inkMuted)
+            Spacer(modifier = Modifier.height(Space.sm))
+            if (task != null) {
+                Text(task.prompt, style = type.body, color = colors.ink)
+                Spacer(modifier = Modifier.height(Space.md))
+                PrimaryAction(if (related) "换个场景练这个用法" else "开始场景练习") {
+                    if (related && focus != null) navController.navigate(Routes.Settings.PatternPractice(focus.pattern.id))
+                    else navController.navigate(Routes.Settings.PersonalPractice)
+                }
+            } else if (snapshot != null && snapshot.sources == 0 && focus == null) {
+                PrimaryAction("导入个人练习库") { navController.navigate(Routes.Settings.PersonalPractice) }
+            } else if (snapshot != null) {
+                Text("今天的场景已练完", style = type.body, color = colors.inkMuted)
+            }
 
             Spacer(modifier = Modifier.height(Space.sm))
             // Full-width tappable row: a bare Text with clickable only covers the glyphs, which

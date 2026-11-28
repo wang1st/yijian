@@ -219,6 +219,10 @@ object Routes {
         object PersonalPractice
 
         @Serializable
+        @Deeplink("settings/review/practice-pattern")
+        data class PatternPractice(val patternId: String)
+
+        @Serializable
         @Deeplink("settings/typing")
         object Typing
 
@@ -382,6 +386,9 @@ object Routes {
             composableWithDeepLink(Settings.ReviewMistakes::class) { MistakePracticeScreen() }
             composableWithDeepLink(Settings.MistakeProgress::class) { MistakeProgressScreen() }
             composableWithDeepLink(Settings.Expressions::class) { ExpressionLibraryScreen() }
+            composableWithDeepLink(Settings.PatternPractice::class) { entry ->
+                PersonalPracticeScreen(entry.toRoute<Settings.PatternPractice>().patternId)
+            }
             composableWithDeepLink(Settings.PersonalPractice::class) { PersonalPracticeScreen() }
             composableWithDeepLink(Settings.ExpressionPractice::class) { ExpressionPracticeScreen() }
 
