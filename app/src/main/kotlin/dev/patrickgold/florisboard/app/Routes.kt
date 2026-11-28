@@ -70,6 +70,8 @@ import dev.patrickgold.florisboard.app.settings.localization.LocalizationScreen
 import dev.patrickgold.florisboard.app.settings.localization.SelectLocaleScreen
 import dev.patrickgold.florisboard.app.settings.localization.SubtypeEditorScreen
 import dev.patrickgold.florisboard.app.settings.media.MediaScreen
+import dev.patrickgold.florisboard.app.settings.review.MistakePracticeScreen
+import dev.patrickgold.florisboard.app.settings.review.MistakeProgressScreen
 import dev.patrickgold.florisboard.app.settings.review.ReviewGenerateScreen
 import dev.patrickgold.florisboard.app.settings.review.ReviewHistoryScreen
 import dev.patrickgold.florisboard.app.settings.review.ReviewHomeScreen
@@ -192,6 +194,14 @@ object Routes {
         @Serializable
         @Deeplink("settings/review/generate")
         object ReviewGenerate
+
+        @Serializable
+        @Deeplink("settings/review/mistakes")
+        object ReviewMistakes
+
+        @Serializable
+        @Deeplink("settings/review/mistake-progress")
+        object MistakeProgress
 
         @Serializable
         @Deeplink("settings/typing")
@@ -354,6 +364,8 @@ object Routes {
             composableWithDeepLink(Settings.ReviewPractice::class) { ReviewPracticeScreen() }
             composableWithDeepLink(Settings.ReviewHistory::class) { ReviewHistoryScreen() }
             composableWithDeepLink(Settings.ReviewGenerate::class) { ReviewGenerateScreen() }
+            composableWithDeepLink(Settings.ReviewMistakes::class) { MistakePracticeScreen() }
+            composableWithDeepLink(Settings.MistakeProgress::class) { MistakeProgressScreen() }
 
             composableWithDeepLink(Settings.Typing::class) { TypingScreen() }
 

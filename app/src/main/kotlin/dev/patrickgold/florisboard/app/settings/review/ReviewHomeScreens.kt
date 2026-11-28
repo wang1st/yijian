@@ -130,6 +130,28 @@ fun ReviewHomeScreen() {
                 )
             }
 
+            // Two more ways in, set as text: practising your own recurring mistakes, and
+            // seeing whether they are actually going away.
+            Spacer(modifier = Modifier.height(Space.xl))
+            Row(horizontalArrangement = Arrangement.spacedBy(Space.xxl)) {
+                Text(
+                    text = "错题练习",
+                    style = type.body,
+                    color = colors.ink,
+                    modifier = Modifier.clickable {
+                        navController.navigate(Routes.Settings.ReviewMistakes)
+                    },
+                )
+                Text(
+                    text = "错误点",
+                    style = type.body,
+                    color = colors.ink,
+                    modifier = Modifier.clickable {
+                        navController.navigate(Routes.Settings.MistakeProgress)
+                    },
+                )
+            }
+
             if (s != null) {
                 Spacer(modifier = Modifier.height(Space.xxl))
                 Rule()

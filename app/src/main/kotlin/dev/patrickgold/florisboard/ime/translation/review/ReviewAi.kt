@@ -90,6 +90,23 @@ object ReviewAi {
         }
     }
 
+    /**
+     * Sends a single-turn prompt and returns the raw reply.
+     *
+     * Exposed so other features (mistake grouping) can reuse the same endpoint, key and
+     * provider compatibility handling without duplicating the HTTP layer.
+     */
+    suspend fun rawChat(system: String, user: String, maxTokens: Int = 700): String? =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { chat(system, user, maxTokens) }
+                .onFailure { flogError { "yijian ai rawChat: ${it.message}" } }
+                .getOrNull()
+        }
+
+    /** Parses the first JSON object in a reply; null when there is none. */
+    fun firstJsonObject(reply: String): JSONObject? =
+        runCatching { jsonObject(reply) }.getOrNull()
+
     /** Extracts the first JSON object out of a reply that may be wrapped in prose or fences. */
     private fun jsonObject(reply: String): JSONObject {
         val start = reply.indexOf('{')
