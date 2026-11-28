@@ -16,6 +16,7 @@
 
 package dev.patrickgold.florisboard.app.settings.review
 
+import dev.patrickgold.florisboard.app.design.Shape
 import androidx.compose.foundation.background
 import dev.patrickgold.florisboard.app.design.YijianTheme
 import dev.patrickgold.florisboard.app.design.Space
@@ -244,7 +245,7 @@ internal fun PagePrimaryAction(label: String, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .height(52.dp)
-            .background(colors.accent, dev.patrickgold.florisboard.app.design.Shape.action)
+            .background(colors.accent, Shape.action)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {

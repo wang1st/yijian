@@ -16,6 +16,7 @@
 
 package dev.patrickgold.florisboard.app.main
 
+import dev.patrickgold.florisboard.app.design.Shape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -204,7 +205,7 @@ private fun PrimaryAction(label: String, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .height(52.dp)
-            .background(colors.accent, dev.patrickgold.florisboard.app.design.Shape.action)
+            .background(colors.accent, Shape.action)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {

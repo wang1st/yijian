@@ -16,6 +16,9 @@
 
 package dev.patrickgold.florisboard.app.settings.review
 
+import dev.patrickgold.florisboard.app.design.Shape
+import dev.patrickgold.florisboard.app.design.YijianTheme
+import dev.patrickgold.florisboard.app.design.Space
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -339,14 +342,14 @@ private fun ChoiceSurface(
             .heightIn(min = 56.dp)
             .background(
                 if (state == SurfaceState.Recessed) colors.paper else colors.sheet,
-                dev.patrickgold.florisboard.app.design.Shape.sheet,
+                Shape.sheet,
             )
             .then(
                 if (state == SurfaceState.Correct || state == SurfaceState.Wrong) {
                     Modifier.border(
                         1.dp,
                         accent,
-                        dev.patrickgold.florisboard.app.design.Shape.sheet,
+                        Shape.sheet,
                     )
                 } else {
                     Modifier
@@ -410,13 +413,13 @@ private fun PageAction(text: String, enabled: Boolean, onClick: () -> Unit) {
             .height(52.dp)
             .background(
                 if (enabled) colors.accent else colors.paper,
-                dev.patrickgold.florisboard.app.design.Shape.action,
+                Shape.action,
             )
             .then(
                 if (enabled) Modifier else Modifier.border(
                     1.dp,
                     colors.rule,
-                    dev.patrickgold.florisboard.app.design.Shape.action,
+                    Shape.action,
                 )
             )
             .clickable(enabled = enabled, onClick = onClick),
