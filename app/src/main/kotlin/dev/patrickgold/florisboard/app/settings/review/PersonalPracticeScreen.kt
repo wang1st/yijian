@@ -35,7 +35,7 @@ fun PersonalPracticeScreen() {
 
     LaunchedEffect(refresh) {
         try {
-            data = withContext(Dispatchers.IO) { db.snapshot() }
+            data = withContext(Dispatchers.IO) { db.nextRound() }
         } catch (e: CancellationException) { throw e }
         catch (e: Exception) { notice = "暂时无法读取练习进度。" }
     }
@@ -58,7 +58,7 @@ fun PersonalPracticeScreen() {
                             }
                         }
                         db.importPack(JSONObject(content))
-                        db.snapshot()
+                        db.nextRound()
                     }
                     notice = "练习库已导入，已有答题进度已保留。"
                 } catch (e: CancellationException) { throw e }
@@ -79,7 +79,12 @@ fun PersonalPracticeScreen() {
                     val task = current.task
                     if (task == null) Text("今天的场景都练过了。到期后，这里会出现下一次练习。", style = type.title, color = colors.ink)
                     else key(task.id) {
-                        ScenarioExercise(task, busy, { busy = it }, { notice = ""; refresh++ })
+                        ScenarioExercise(task, busy, { busy = it }, { outcome ->
+                            if (outcome != "hint") data = current.copy(
+                                passed = current.passed + if (outcome == "pass") 1 else 0,
+                                graded = current.graded + 1
+                            )
+                        }, { notice = ""; refresh++ })
                     }
                     Text("已载入 ${current.sources} 条历史记录", style = type.small, color = colors.inkMuted)
                 } else {
@@ -97,7 +102,7 @@ fun PersonalPracticeScreen() {
 }
 
 @Composable
-private fun ScenarioExercise(task: Scenario, busy: Boolean, setBusy: (Boolean) -> Unit, advance: () -> Unit) {
+private fun ScenarioExercise(task: Scenario, busy: Boolean, setBusy: (Boolean) -> Unit, onGraded: (String) -> Unit, advance: () -> Unit) {
     val colors = YijianTheme.colors
     val type = YijianTheme.type
     val scope = rememberCoroutineScope()
@@ -105,6 +110,7 @@ private fun ScenarioExercise(task: Scenario, busy: Boolean, setBusy: (Boolean) -
     val attemptId = rememberSaveable { UUID.randomUUID().toString() }
     var submitted by rememberSaveable { mutableStateOf(false) }
     var feedback by rememberSaveable { mutableStateOf("") }
+    var example by remember { mutableStateOf<Pair<String, String>?>(null) }
     var problem by rememberSaveable { mutableStateOf("") }
 
     fun finish(hint: Boolean) {
@@ -121,12 +127,15 @@ private fun ScenarioExercise(task: Scenario, busy: Boolean, setBusy: (Boolean) -
                     result
                 }
                 if (verdict == null) problem = "暂时无法判读。请检查翻译设置中的模型连接，再用这次首答重试。"
-                else feedback = listOf(when (verdict.outcome) {
+                else {
+                    onGraded(verdict.outcome)
+                    feedback = listOf(when (verdict.outcome) {
                     "pass" -> "首答通过"
                     "meaning" -> "再练意思"
                     "tone" -> "再练语气"
                     else -> "已看示例"
-                }, verdict.message).joinToString(" · ")
+                    }, verdict.message).joinToString(" · ")
+                }
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { problem = "未能完成这次练习。可以用同一份回答重试。" }
             finally { setBusy(false) }
@@ -156,5 +165,17 @@ private fun ScenarioExercise(task: Scenario, busy: Boolean, setBusy: (Boolean) -
         Text("一种自然的说法", style = type.label, color = colors.inkMuted)
         Text(task.reference, style = type.title, color = colors.positive)
         Button(onClick = advance, enabled = !busy) { Text("下一题") }
+        val past = example
+        if (past == null) TextButton(onClick = {
+            scope.launch { example = withContext(Dispatchers.IO) { PersonalPractice.shared.example(task.skill) } }
+        }) { Text("回看一条相关的历史原句") }
+        else {
+            Text("你当时写的", style = type.label, color = colors.inkMuted)
+            Text(past.first, style = type.body, color = colors.ink)
+            if (past.second != past.first) {
+                Text("当时报告给的说法", style = type.label, color = colors.inkMuted)
+                Text(past.second, style = type.body, color = colors.ink)
+            }
+        }
     }
 }

@@ -37,6 +37,25 @@ class PersonalPracticeTest {
         }
     }
 
+    @Test fun generatesOnlyAfterEverySeedWasTriedAndKeepsOfflineFallback() = kotlinx.coroutines.runBlocking {
+        PersonalPractice(context, null).use { db ->
+            db.importPack(pack())
+            val first = db.nextRound(0) { error("unused seed should not call model") }.task!!
+            db.record("1",first,"",Verdict("hint","example"),0)
+            val next = db.nextRound(day) { error("use second seed first") }.task!!
+            db.record("2",next,"",Verdict("hint","example"),day)
+            val fallback = db.nextRound(2*day) { null }.task!!
+            assertEquals(1, fallback.timesSeen)
+            val fresh = db.nextRound(2*day) { request ->
+                assertEquals("hint",request.getString("lastOutcome"))
+                JSONObject().put("prompt","问图书管理员，明天几点开门。").put("reference","What time does the library open tomorrow?")
+            }.task!!
+            assertEquals(0, fresh.timesSeen)
+            assertNotEquals(first.id, fresh.id)
+            assertNotEquals(next.id, fresh.id)
+        }
+    }
+
     @Test fun invalidPackRollsBackAndCleanReuseIsIndependentOfGrades() {
         PersonalPractice(context, null).use { db ->
             val invalid = pack()

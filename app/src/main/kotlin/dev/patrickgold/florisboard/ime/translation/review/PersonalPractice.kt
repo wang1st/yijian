@@ -11,7 +11,7 @@ import java.security.MessageDigest
 
 internal data class Scenario(
     val id: String, val skill: String, val title: String, val prompt: String, val reference: String,
-    val sourceCount: Int, val lastOutcome: String?, val uses: Int, val focus: String,
+    val sourceCount: Int, val lastOutcome: String?, val uses: Int, val focus: String, val timesSeen: Int,
 )
 internal data class PracticeSnapshot(val sources: Int, val passed: Int, val graded: Int, val task: Scenario?)
 internal data class Verdict(val outcome: String, val message: String)
@@ -95,22 +95,63 @@ internal class PersonalPractice(context: Context, name: String? = "personal_prac
         val query = """
             SELECT t.id,s.id,s.title,t.prompt,t.reference,
               (SELECT count(*) FROM evidence WHERE skill=s.id) AS freq, h.outcome,
-              (SELECT count(*) FROM reuse WHERE skill=s.id) AS uses,t.focus
+              (SELECT count(*) FROM reuse WHERE skill=s.id) AS uses,t.focus,
+              (SELECT count(*) FROM attempt WHERE task=t.id) AS seen
             FROM task t JOIN skill s ON s.id=t.skill LEFT JOIN schedule h ON h.skill=s.id
             WHERE h.due IS NULL OR h.due <= CAST(? AS INTEGER)
             ORDER BY CASE WHEN h.outcome IN ('meaning','tone','hint') THEN 0 ELSE 1 END,
               (1.0 * freq / (1 + uses + coalesce(h.streak,0))) DESC,
-              (SELECT count(*) FROM attempt WHERE task=t.id),t.id LIMIT 1
+              seen,t.id LIMIT 1
         """.trimIndent()
         val task = db.rawQuery(query,arrayOf(now.toString())).use { c ->
             if (!c.moveToFirst()) null else Scenario(c.getString(0),c.getString(1),c.getString(2),c.getString(3),
-                c.getString(4),c.getInt(5),c.getString(6),c.getInt(7),c.getString(8))
+                c.getString(4),c.getInt(5),c.getString(6),c.getInt(7),c.getString(8),c.getInt(9))
         }
         val cutoff = (now - 28 * DAY).toString()
         val count = DatabaseUtils.queryNumEntries(db,"source").toInt()
         val graded = DatabaseUtils.queryNumEntries(db,"attempt","time>=? AND outcome IN ('pass','meaning','tone')",arrayOf(cutoff)).toInt()
         val passed = DatabaseUtils.queryNumEntries(db,"attempt","time>=? AND outcome='pass'",arrayOf(cutoff)).toInt()
         return PracticeSnapshot(count,passed,graded,task)
+    }
+
+    fun example(skill: String): Pair<String, String>? = readableDatabase.rawQuery(
+        "SELECT s.data FROM source s JOIN evidence e ON e.source=s.id WHERE e.skill=? ORDER BY s.rowid LIMIT 1",
+        arrayOf(skill)
+    ).use { cursor ->
+        if (!cursor.moveToFirst()) null else JSONObject(cursor.getString(0)).let { it.getString("original") to it.getString("better") }
+    }
+
+    // Once every situation for the selected skill has been tried, vary the audience or goal.
+    // Generation receives exercise prompts and the outcome category, never the source archive.
+    suspend fun nextRound(
+        now: Long = System.currentTimeMillis(),
+        generate: suspend (JSONObject) -> JSONObject? = ::generateSituation,
+    ): PracticeSnapshot {
+        val original = snapshot(now)
+        val task = original.task ?: return original
+        if (task.timesSeen == 0) return original
+        val prior = readableDatabase.rawQuery(
+            "SELECT prompt FROM task WHERE skill=? ORDER BY rowid DESC LIMIT 8", arrayOf(task.skill)
+        ).use { c -> JSONArray().apply { while (c.moveToNext()) put(c.getString(0)) } }
+        val request = JSONObject().put("goal", task.title).put("previous", prior)
+            .put("lastOutcome", task.lastOutcome ?: "")
+        val proposal = generate(request) ?: return original
+        val prompt = proposal.optString("prompt").trim()
+        val reference = proposal.optString("reference").trim()
+        if (prompt.length !in 6..240 || reference.length !in 5..360 ||
+            !reference.contains(Regex("[A-Za-z]{2,}")) || reference.contains(Regex("[一-龥]"))) return original
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val active = snapshot(now).task
+            if (active?.skill == task.skill && active.timesSeen > 0 &&
+                DatabaseUtils.queryNumEntries(db,"task","skill=? AND prompt=?",arrayOf(task.skill,prompt)) == 0L) {
+                db.execSQL("INSERT INTO task VALUES(?,?,?,?,?)",
+                    arrayOf("variant-" + java.util.UUID.randomUUID(), task.skill, task.focus, prompt, reference))
+            }
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+        return snapshot(now)
     }
 
     fun record(key: String, task: Scenario, answer: String, verdict: Verdict, now: Long = System.currentTimeMillis()) {
@@ -149,6 +190,16 @@ internal class PersonalPractice(context: Context, name: String? = "personal_prac
             }
         }
     }
+}
+
+private suspend fun generateSituation(request: JSONObject): JSONObject? {
+    if (!ReviewAi.isEnabled()) return null
+    val reply = ReviewAi.rawChat(
+        "请为英语学习者设计一个新的沟通场景，保留 goal，变换听者、信息和场合。" +
+            "previous 是已经做过的题目。上次结果若为 tone，明确双方关系；若为 meaning，给出两个要表达的信息。" +
+            "返回 JSON：prompt 是一句完整的中文任务，不提示英文答案；reference 是一种符合情境的自然英文回答。",
+        request.toString(), 400) ?: return null
+    return ReviewAi.firstJsonObject(reply)
 }
 
 internal suspend fun judgeScenario(task: Scenario, answer: String): Verdict? {
