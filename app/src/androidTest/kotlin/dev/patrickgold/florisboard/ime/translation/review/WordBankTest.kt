@@ -1,6 +1,9 @@
 package dev.patrickgold.florisboard.ime.translation.review
 
+import android.graphics.Rect
 import android.os.SystemClock
+import android.view.InputDevice
+import android.view.MotionEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -15,22 +18,54 @@ import org.junit.Test
 class WordBankTest {
     private val automation get() = InstrumentationRegistry.getInstrumentation().uiAutomation
 
-    private fun waitUntil(check: () -> Boolean) {
+    private fun waitUntil(description: String, check: () -> Boolean) {
         val deadline = SystemClock.uptimeMillis() + 8000
         while (!check()) {
-            assertTrue("Timed out waiting for word bank", SystemClock.uptimeMillis() < deadline)
+            assertTrue("Timed out waiting for $description", SystemClock.uptimeMillis() < deadline)
             SystemClock.sleep(50)
         }
     }
 
-    private fun tapWord(word: String) = waitUntil {
-        val root = automation.rootInActiveWindow ?: return@waitUntil false
-        root.findAccessibilityNodeInfosByText(word).any { match ->
-            if (match.text?.toString() != word) return@any false
-            var node: AccessibilityNodeInfo? = match
-            while (node != null && !node.isClickable) node = node.parent
-            node?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true
+    private fun descendants(node: AccessibilityNodeInfo): Sequence<AccessibilityNodeInfo> = sequence {
+        yield(node)
+        for (index in 0 until node.childCount) {
+            node.getChild(index)?.let { yieldAll(descendants(it)) }
         }
+    }
+
+    private fun tapWord(word: String) {
+        val bounds = Rect()
+        val targetPackage = InstrumentationRegistry.getInstrumentation().targetContext.packageName
+        var visible = emptyList<String>()
+        var foreground = ""
+        try {
+            waitUntil("visible word tile '$word'") {
+                val root = automation.rootInActiveWindow ?: return@waitUntil false
+                foreground = root.packageName?.toString().orEmpty()
+                if (foreground != targetPackage) return@waitUntil false
+                // Compose exposes virtual descendants; provider text searches can return empty
+                // even when the individual nodes and their on-screen bounds are available.
+                val nodes = descendants(root).filter { it.isVisibleToUser }.toList()
+                visible = nodes.mapNotNull { it.text?.toString() ?: it.contentDescription?.toString() }
+                val tile = nodes.firstOrNull {
+                    it.text?.toString() == word || it.contentDescription?.toString() == word
+                } ?: return@waitUntil false
+                tile.getBoundsInScreen(bounds)
+                !bounds.isEmpty
+            }
+        } catch (timeout: AssertionError) {
+            throw AssertionError("${timeout.message}; foreground=$foreground, visible labels=$visible", timeout)
+        }
+        val downTime = SystemClock.uptimeMillis()
+        for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+            val event = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), action,
+                bounds.exactCenterX(), bounds.exactCenterY(), 0)
+            try {
+                event.source = InputDevice.SOURCE_TOUCHSCREEN
+                assertTrue("Touch delivery failed for '$word'", automation.injectInputEvent(event, true))
+            } finally { event.recycle() }
+        }
+        automation.waitForIdle(100, 3000)
     }
 
     @Test fun tapUndoAndRestoreWithoutTextEntry() {
@@ -44,7 +79,7 @@ class WordBankTest {
                     }
                 }
             }
-            fun expectAnswer(expected: String) = waitUntil {
+            fun expectAnswer(expected: String) = waitUntil("assembled answer '$expected'") {
                 var matches = false
                 screen.onActivity { matches = current.answer() == expected }
                 matches
@@ -63,9 +98,7 @@ class WordBankTest {
             tapWord("Please")
             expectAnswer("call Please")
             val root = requireNotNull(automation.rootInActiveWindow)
-            fun hasEditor(node: AccessibilityNodeInfo): Boolean =
-                node.isEditable || (0 until node.childCount).any { node.getChild(it)?.let(::hasEditor) == true }
-            assertFalse(hasEditor(root))
+            assertFalse(descendants(root).any { it.isEditable })
         }
     }
 
