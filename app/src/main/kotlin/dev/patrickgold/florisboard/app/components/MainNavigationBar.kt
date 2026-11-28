@@ -130,11 +130,13 @@ fun MainNavigationBar() {
                         .heightIn(min = 52.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    // The active rule sits above the icon, like a line drawn under a heading.
+                    // The active rule sits above the icon. Fixed width, animated via alpha:
+                    // a fractional fillMaxWidth inside this Column would stretch the column to
+                    // the row's width and push the other tabs off screen.
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth(ruleWidth)
-                            .height(2.dp)
+                            .size(width = 20.dp, height = 2.dp)
+                            .alpha(ruleWidth)
                             .background(colors.ink),
                     )
                     Spacer(modifier = Modifier.height(Space.sm))
