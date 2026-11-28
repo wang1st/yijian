@@ -16,6 +16,9 @@
 
 package dev.patrickgold.florisboard.app.settings.review
 
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -287,7 +290,14 @@ fun ExpressionPracticeScreen() {
 private fun Progress(current: Int, total: Int) {
     val colors = YijianTheme.colors
     val type = YijianTheme.type
-    BoxWithConstraintsSafe(current, total)
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth().height(2.dp).background(colors.rule)) {
+        Box(
+            modifier = Modifier
+                .width(maxWidth * (current.toFloat() / total.coerceAtLeast(1)))
+                .fillMaxHeight()
+                .background(colors.ink),
+        )
+    }
     Spacer(modifier = Modifier.height(Space.sm))
     Text("$current / $total", style = type.label, color = colors.inkMuted)
 }
