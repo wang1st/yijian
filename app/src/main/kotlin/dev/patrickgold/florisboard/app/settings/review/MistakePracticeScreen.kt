@@ -98,13 +98,18 @@ fun MistakePracticeScreen() {
         }
     }
 
-    fun advance(correct: Boolean) {
-        val item: PointWithExamples = retryItem ?: slots.getOrNull(index) ?: return
+    /**
+     * Records an outcome for [item] and moves on.
+     *
+     * The item is passed in rather than read from state: reading a delegated state property
+     * inside a local function made the compiler lose the element type, and taking the argument
+     * also makes it obvious which item is being answered.
+     */
+    fun advance(item: PointWithExamples, correct: Boolean) {
+        val inRetryTail = retryItem?.point?.id == item.point.id
         if (!correct) {
-            // Explicit type on the lambda: `failures` is a delegated state property, and the
-            // compiler cannot derive the element type through the delegate here.
-            val alreadyFailed = failures.any { f: PointWithExamples -> f.point.id == item.point.id }
-            if (!alreadyFailed) {
+            val already: List<PointWithExamples> = failures
+            if (already.none { f -> f.point.id == item.point.id }) {
                 failures = failures + item
             }
             retries.enqueue(item)
@@ -112,14 +117,15 @@ fun MistakePracticeScreen() {
         scope.launch {
             MistakeStore.recordReview(item.point.id, correct)
             revealed = false
-            if (retryItem != null) {
-                // In the tail: take the next redo, or finish.
-                retryItem = retries.next()
-                if (retryItem == null) phase = MistakePhase.DONE
+            if (inRetryTail) {
+                val next = retries.next()
+                retryItem = next
+                if (next == null) phase = MistakePhase.DONE
                 queueVersion++
             } else if (index + 1 >= slots.size) {
-                retryItem = retries.next()
-                phase = if (retryItem == null) MistakePhase.DONE else MistakePhase.ASK
+                val next = retries.next()
+                retryItem = next
+                phase = if (next == null) MistakePhase.DONE else MistakePhase.ASK
                 queueVersion++
             } else {
                 index += 1
@@ -242,9 +248,9 @@ fun MistakePracticeScreen() {
                         BigAction("看答案") { revealed = true }
                     } else {
                         Row(horizontalArrangement = Arrangement.spacedBy(Space.md)) {
-                            BigAction("没想起来", emphasised = false, weight = 1f) { advance(false) }
+                            BigAction("没想起来", emphasised = false, weight = 1f) { advance(item, false) }
                             Spacer(modifier = Modifier.width(0.dp))
-                            BigAction("记住了", weight = 1f) { advance(true) }
+                            BigAction("记住了", weight = 1f) { advance(item, true) }
                         }
                     }
                     Spacer(modifier = Modifier.height(Space.xl))
