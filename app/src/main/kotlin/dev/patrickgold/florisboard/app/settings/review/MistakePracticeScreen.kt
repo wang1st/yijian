@@ -101,7 +101,10 @@ fun MistakePracticeScreen() {
     fun advance(correct: Boolean) {
         val item = retryItem ?: slots.getOrNull(index) ?: return
         if (!correct) {
-            if (failures.none { it.point.id == item.point.id }) failures = failures + item
+            val alreadyFailed = failures.any { f -> f.point.id == item.point.id }
+            if (!alreadyFailed) {
+                failures = failures + item
+            }
             retries.enqueue(item)
         }
         scope.launch {
