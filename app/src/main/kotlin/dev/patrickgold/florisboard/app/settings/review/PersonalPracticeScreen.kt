@@ -75,7 +75,7 @@ fun PersonalPracticeScreen() {
             val current = data
             if (current != null) {
                 if (current.sources > 0) {
-                    Text("近 28 天独立首答通过 ${current.passed} / ${current.graded}", style = type.label, color = colors.inkMuted)
+                    Text("近 28 天首答通过 ${current.passed} / ${current.graded}", style = type.label, color = colors.inkMuted)
                     val task = current.task
                     if (task == null) Text("今天的场景都练过了。到期后，这里会出现下一次练习。", style = type.title, color = colors.ink)
                     else key(task.id) {
@@ -89,7 +89,7 @@ fun PersonalPracticeScreen() {
                     Text("已载入 ${current.sources} 条历史记录", style = type.small, color = colors.inkMuted)
                 } else {
                     Text("从你自己想说的话开始", style = type.title, color = colors.ink)
-                    Text("导入个人练习库后，你会遇到和过去相似的新情境。先用自己的英语回应，再看反馈。", style = type.body, color = colors.inkMuted)
+                    Text("导入个人练习库后，你会遇到和过去相似的新情境。点选单词拼出回答，再看反馈。", style = type.body, color = colors.inkMuted)
                 }
                 TextButton(enabled = !busy, onClick = { picker.launch(arrayOf("*/*")) }) {
                     Text(if (current.sources == 0) "导入个人练习库" else "导入或更新练习库")
@@ -106,7 +106,7 @@ private fun ScenarioExercise(task: Scenario, busy: Boolean, setBusy: (Boolean) -
     val colors = YijianTheme.colors
     val type = YijianTheme.type
     val scope = rememberCoroutineScope()
-    var answer by rememberSaveable { mutableStateOf("") }
+    val tiles = rememberTileState(task.id, task.reference)
     val attemptId = rememberSaveable { UUID.randomUUID().toString() }
     var submitted by rememberSaveable { mutableStateOf(false) }
     var feedback by rememberSaveable { mutableStateOf("") }
@@ -115,6 +115,7 @@ private fun ScenarioExercise(task: Scenario, busy: Boolean, setBusy: (Boolean) -
 
     fun finish(hint: Boolean) {
         if (busy || feedback.isNotEmpty()) return
+        val answer = tiles.answer()
         submitted = true
         setBusy(true)
         problem = ""
@@ -148,15 +149,14 @@ private fun ScenarioExercise(task: Scenario, busy: Boolean, setBusy: (Boolean) -
         "meaning" -> "上次漏了关键意思。这次换个情境再说一次。"
         "tone" -> "上次的措辞和对方身份不太合适。这次留意对谁说。"
         "hint" -> "上次看过示例。这次试试自己组织语言。"
-        "pass" -> "上次独立答对了。换个情境，再看看能否用出来。"
+        "pass" -> "上次首答通过了。换个情境，再看看能否用出来。"
         else -> "从你过去 ${task.sourceCount} 条相关记录中选出。"
     }, style = type.small, color = colors.inkMuted)
     if (task.uses > 0) Text("日常输入中出现过相关措辞 · ${task.uses} 条", style = type.small, color = colors.inkMuted)
-    OutlinedTextField(value = answer, onValueChange = { answer = it.take(2000) }, readOnly = submitted,
-        modifier = Modifier.fillMaxWidth(), minLines = 2, label = { Text("你会怎么用英语说？") })
+    WordBankAnswer(tiles, editable = !busy && !submitted)
     if (feedback.isEmpty()) {
-        Button(onClick = { finish(false) }, enabled = !busy && answer.isNotBlank()) {
-            Text(if (busy) "处理中…" else if (submitted) "重试这次首答" else "提交首答")
+        Button(onClick = { finish(false) }, enabled = !busy && tiles.placed.isNotEmpty()) {
+            Text(if (busy) "处理中…" else if (submitted) "重试这次首答" else "检查答案")
         }
         TextButton(onClick = { finish(true) }, enabled = !busy) { Text("想不起来，看示例") }
         if (problem.isNotBlank()) Text(problem, style = type.body, color = colors.ink)

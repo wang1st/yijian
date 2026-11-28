@@ -35,9 +35,6 @@ import dev.patrickgold.florisboard.ime.translation.review.ReviewCard
  */
 enum class SessionPhase { LOADING, EMPTY, QUESTION, GRADED, DONE }
 
-/** How the learner assembles an English answer in the recall exercise. */
-enum class InputMode { TILES, KEYBOARD }
-
 /** A tapped answer in a multiple-choice exercise. */
 data class PickedChoice(val text: String, val correct: Boolean)
 
@@ -55,8 +52,6 @@ data class SessionState(
     val aiExercise: ReviewAi.AiExercise? = null,
     val preparing: Boolean = false,
     val picked: PickedChoice? = null,
-    val typed: String = "",
-    val inputMode: InputMode = InputMode.TILES,
     val diff: DiffResult? = null,
     val aiComment: String? = null,
     val aiChecking: Boolean = false,
@@ -71,6 +66,8 @@ data class SessionState(
 ) {
     val card: ReviewCard? get() = queue.getOrNull(index)
     val total: Int get() = queue.size
+
+    val target: String get() = aiExercise?.answer?.takeIf { it.isNotBlank() } ?: exercise?.answer ?: card?.entry?.corrected.orEmpty()
 
     /** True when the current exercise is answered by tapping options. */
     val isChoice: Boolean
@@ -131,13 +128,10 @@ class PracticeSession(private val host: SessionHost) {
             preparing = true,
             picked = null,
             diff = null,
-            typed = "",
             aiComment = null,
             aiChecking = false,
             detailOpen = false,
             answerStarted = false,
-            // Tiles are only meaningful for recall; other types render their own input.
-            inputMode = InputMode.TILES,
         )
         val ai = host.prepareExercise(card, state.queue.filter { it.id != card.id })
         // Accept the model-authored exercise only if the learner has not started answering the
@@ -151,22 +145,11 @@ class PracticeSession(private val host: SessionHost) {
 
     // ---- events ---------------------------------------------------------------------
 
-    fun setTyped(value: String) {
-        if (state.phase != SessionPhase.QUESTION) return
-        state = state.copy(typed = value, answerStarted = state.answerStarted || value.isNotBlank())
-    }
-
     /** Called by the tile view when the first word is placed, so the session knows work began. */
     fun markAnswerStarted() {
         if (state.phase == SessionPhase.QUESTION && !state.answerStarted) {
             state = state.copy(answerStarted = true)
         }
-    }
-
-    fun toggleInputMode() {
-        state = state.copy(
-            inputMode = if (state.inputMode == InputMode.TILES) InputMode.KEYBOARD else InputMode.TILES
-        )
     }
 
     fun toggleDetail() {
@@ -190,11 +173,11 @@ class PracticeSession(private val host: SessionHost) {
     suspend fun check(answer: String) {
         if (state.phase != SessionPhase.QUESTION) return
         val card = state.card ?: return
-        val local = WordDiff.grade(card.entry.corrected, answer)
+        val local = WordDiff.grade(state.target, answer)
         state = state.copy(diff = local, aiComment = null, phase = SessionPhase.GRADED)
         if (!ReviewAi.shouldAskAi(local.similarity)) return
         state = state.copy(aiChecking = true)
-        val verdict = host.gradeAi(card.entry.corrected, answer, card.entry.translation)
+        val verdict = host.gradeAi(state.target, answer, card.entry.translation)
         val comment = when {
             verdict.accepted -> verdict.feedback.ifBlank { "AI 判为同义表达" }
             verdict.fix.isNotBlank() -> "AI 认为还差：${verdict.fix}"

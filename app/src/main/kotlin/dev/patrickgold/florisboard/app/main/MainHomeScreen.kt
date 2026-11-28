@@ -136,7 +136,7 @@ fun MainHomeScreen() {
             Spacer(modifier = Modifier.height(Space.sm))
             Text(when {
                 task != null -> task.prompt
-                snapshot != null && snapshot.sources > 0 -> "近 28 天独立首答通过 ${snapshot.passed} / ${snapshot.graded}"
+                snapshot != null && snapshot.sources > 0 -> "近 28 天首答通过 ${snapshot.passed} / ${snapshot.graded}"
                 else -> "导入个人练习库，在新情境里试试自己想说的话。"
             }, style = type.body, color = colors.inkMuted)
 
