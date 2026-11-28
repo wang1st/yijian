@@ -16,6 +16,7 @@
 
 package dev.patrickgold.florisboard.app.settings.review
 
+import dev.patrickgold.florisboard.ime.translation.mistake.MistakeStore
 import dev.patrickgold.florisboard.app.design.Shape
 import androidx.compose.foundation.background
 import dev.patrickgold.florisboard.app.design.YijianTheme
