@@ -16,6 +16,7 @@
 
 package dev.patrickgold.florisboard.app.settings.review
 
+import dev.patrickgold.florisboard.ime.translation.mistake.ReviewStatsSource
 import androidx.compose.foundation.layout.heightIn
 import dev.patrickgold.florisboard.ime.translation.mistake.MistakeStore
 import dev.patrickgold.florisboard.app.design.Shape
@@ -51,7 +52,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.patrickgold.florisboard.app.LocalNavController
@@ -59,7 +59,7 @@ import dev.patrickgold.florisboard.app.Routes
 import dev.patrickgold.florisboard.app.components.FlorisScreenNg
 import dev.patrickgold.florisboard.ime.translation.mistake.MistakePoint
 import dev.patrickgold.florisboard.ime.translation.review.ReviewCard
-import dev.patrickgold.florisboard.ime.translation.review.ReviewSnapshot
+import dev.patrickgold.florisboard.ime.translation.mistake.ReviewStats
 import dev.patrickgold.florisboard.ime.translation.review.ReviewStore
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -75,13 +75,11 @@ fun ReviewHomeScreen() {
     val colors = YijianTheme.colors
     val type = YijianTheme.type
 
-    var snapshot by remember { mutableStateOf<ReviewSnapshot?>(null) }
-    var recent by remember { mutableStateOf<List<ReviewCard>>(emptyList()) }
+    var stats by remember { mutableStateOf<ReviewStats?>(null) }
     var weakPoints by remember { mutableStateOf<List<MistakePoint>>(emptyList()) }
 
     LaunchedEffect(Unit) {
-        snapshot = ReviewStore.snapshot()
-        recent = ReviewStore.allCards().sortedByDescending { it.entry.timestamp }.take(3)
+        stats = runCatching { ReviewStatsSource.snapshot() }.getOrNull()
         // Explicit type parameter: runCatching's R cannot be inferred through the state
         // property on the left-hand side.
         weakPoints = runCatching<List<MistakePoint>> {
@@ -105,46 +103,42 @@ fun ReviewHomeScreen() {
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = Space.gutter),
         ) {
-            val s = snapshot
-            val pending = (s?.dueCount ?: 0) + (s?.newCount ?: 0)
-            val done = s?.reviewedToday ?: 0
+            val st = stats
 
             Spacer(modifier = Modifier.height(Space.xxl))
 
-            // The headline is the number, set as a figure rather than inside a ring.
+            // The headline is how much of the learner's English is still wrong, which is the
+            // only number that answers "am I getting better".
             Text(
-                text = if (s == null) "…" else "$done",
+                text = if (st == null) "…" else "${st.openPoints}",
                 style = type.display,
                 color = colors.ink,
             )
             Text(
-                text = "今天练过 · 共 ${s?.totalCards ?: 0} 张卡片",
+                text = "个用法还要练 · 已掌握 ${st?.masteredPoints ?: 0} 个",
                 style = type.small,
                 color = colors.inkMuted,
             )
 
             Spacer(modifier = Modifier.height(Space.lg))
-            if (pending > 0) {
-                PagePrimaryAction("开始练习") {
-                    navController.navigate(Routes.Settings.ReviewPractice)
+            if ((st?.openPoints ?: 0) > 0) {
+                PagePrimaryAction("练这些错") {
+                    navController.navigate(Routes.Settings.ReviewMistakes)
                 }
             } else {
                 Text(
-                    text = "今天已经练完了。",
+                    text = "没有待解决的错误。翻译几句会自动积累。",
                     style = type.body,
                     color = colors.inkMuted,
                 )
             }
 
-            // Two more ways in, set as text: practising your own recurring mistakes, and
-            // seeing whether they are actually going away.
+            // Two more ways in, each a full 48 dp row.
             Spacer(modifier = Modifier.height(Space.md))
-            // Three whole rows rather than three bare texts: each is a navigation target and
-            // needs a 48 dp touch area, not just the width of its glyphs.
             listOf(
-                "错题练习" to Routes.Settings.ReviewMistakes,
-                "错误点" to Routes.Settings.MistakeProgress,
+                "练地道说法" to Routes.Settings.ExpressionPractice,
                 "我的表达" to Routes.Settings.Expressions,
+                "错误点" to Routes.Settings.MistakeProgress,
             ).forEach { (label, route) ->
                 Row(
                     modifier = Modifier
@@ -157,7 +151,7 @@ fun ReviewHomeScreen() {
                 }
             }
 
-            if (s != null) {
+            if (st != null) {
                 Spacer(modifier = Modifier.height(Space.xxl))
                 Rule()
                 Spacer(modifier = Modifier.height(Space.lg))
@@ -165,9 +159,10 @@ fun ReviewHomeScreen() {
                 Text(text = "状态", style = type.label, color = colors.inkMuted)
                 Spacer(modifier = Modifier.height(Space.md))
                 Row(horizontalArrangement = Arrangement.spacedBy(Space.xxl)) {
-                    Figure("连续", "${s.streakDays} 天")
-                    Figure("待练", "$pending 张")
-                    Figure("正确", "${s.accuracyToday}%")
+                    Figure("连续", "${st.streakDays} 天")
+                    Figure("今天", "${st.reviewedToday} 个")
+                    Figure("正确", "${st.accuracyToday}%")
+                    Figure("表达", "${st.expressions} 条")
                 }
 
                 // The actual points being failed, not four coarse categories: "very 不能修饰动词"
@@ -209,37 +204,12 @@ fun ReviewHomeScreen() {
                 }
             }
 
-            if (recent.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(Space.xl))
-                Rule()
-                Spacer(modifier = Modifier.height(Space.lg))
-                Text(text = "最近练过", style = type.label, color = colors.inkMuted)
-                Spacer(modifier = Modifier.height(Space.md))
-                recent.forEach { card ->
-                    Text(
-                        text = card.entry.corrected.ifBlank { card.entry.original },
-                        style = type.body,
-                        color = colors.ink,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Spacer(modifier = Modifier.height(Space.hair))
-                    Text(
-                        text = card.entry.translation,
-                        style = type.small,
-                        color = colors.inkMuted,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Spacer(modifier = Modifier.height(Space.md))
-                }
-            }
 
             Spacer(modifier = Modifier.height(Space.xl))
             Rule()
             Spacer(modifier = Modifier.height(Space.lg))
             Text(
-                text = "翻译过的句子会自动变成卡片，按 1 / 3 / 7 / 15 / 30 天重现。",
+                text = "翻译时被纠正过的用法会记下来，按 1 / 3 / 7 / 16 / 35 天重现；说得对但不够地道的，收进「我的表达」。",
                 style = type.small,
                 color = colors.inkMuted,
             )

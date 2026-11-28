@@ -53,8 +53,8 @@ import dev.patrickgold.florisboard.app.Routes
 import dev.patrickgold.florisboard.app.components.FlorisScreenNg
 import dev.patrickgold.florisboard.app.design.Space
 import dev.patrickgold.florisboard.app.design.YijianTheme
-import dev.patrickgold.florisboard.ime.translation.review.ReviewSnapshot
-import dev.patrickgold.florisboard.ime.translation.review.ReviewStore
+import dev.patrickgold.florisboard.ime.translation.mistake.ReviewStats
+import dev.patrickgold.florisboard.ime.translation.mistake.ReviewStatsSource
 import dev.patrickgold.florisboard.lib.util.InputMethodUtils
 import org.florisboard.lib.compose.stringRes
 
@@ -79,12 +79,12 @@ fun MainHomeScreen() {
     val isImeEnabled by InputMethodUtils.observeIsFlorisboardEnabled()
     val isImeSelected by InputMethodUtils.observeIsFlorisboardSelected()
 
-    var snap by remember { mutableStateOf<ReviewSnapshot?>(null) }
+    var stats by remember { mutableStateOf<ReviewStats?>(null) }
     // The point the learner keeps getting wrong is the headline, not the queue length: a card
     // count says how much work is pending, a mistake says what is actually broken.
     var focus by remember { mutableStateOf<MistakePoint?>(null) }
     LaunchedEffect(Unit) {
-        snap = ReviewStore.snapshot()
+        stats = runCatching { ReviewStatsSource.snapshot() }.getOrNull()
         focus = runCatching<MistakePoint?> {
             MistakeStore.allPoints()
                 .filter { !it.mastered }
@@ -130,16 +130,15 @@ fun MainHomeScreen() {
                 )
             }
 
-            val s = snap
-            val pending = s?.let { it.dueCount + it.newCount } ?: 0
-            val doneToday = s?.reviewedToday ?: 0
+            val doneToday = stats?.reviewedToday ?: 0
+            val totalPoints = stats?.totalPoints ?: 0
 
             Spacer(modifier = Modifier.height(Space.xxl))
 
             // What the screen is about: the mistake being repeated, named plainly.
             val f = focus
             when {
-                s == null -> Text("…", style = type.display, color = colors.inkMuted)
+                stats == null -> Text("…", style = type.display, color = colors.inkMuted)
                 f != null -> {
                     Text(
                         text = if (f.stubborn) "还在反复" else "最近在错",
@@ -162,7 +161,7 @@ fun MainHomeScreen() {
                         color = colors.inkMuted,
                     )
                 }
-                pending == 0 && doneToday == 0 -> {
+                doneToday == 0 && totalPoints == 0 -> {
                     Text("还没有错题", style = type.display, color = colors.ink)
                     Spacer(modifier = Modifier.height(Space.sm))
                     Text(
@@ -175,7 +174,7 @@ fun MainHomeScreen() {
                     Text("今天没有要复习的", style = type.display, color = colors.ink)
                     Spacer(modifier = Modifier.height(Space.sm))
                     Text(
-                        "$doneToday 张都过了一遍。",
+                        "$doneToday 个都过了一遍。",
                         style = type.body,
                         color = colors.inkMuted,
                     )
@@ -184,23 +183,13 @@ fun MainHomeScreen() {
 
             Spacer(modifier = Modifier.height(Space.xl))
             PrimaryAction(
-                label = if (f != null || pending > 0) "练这些错" else "去翻译",
+                label = if (f != null) "练这些错" else "去翻译",
                 onClick = {
                     navController.navigate(
-                        if (f != null || pending > 0) Routes.Settings.ReviewMistakes else Routes.Settings.Translation
+                        if (f != null) Routes.Settings.ReviewMistakes else Routes.Settings.Translation
                     )
                 },
             )
-
-            if (pending > 0) {
-                Spacer(modifier = Modifier.height(Space.md))
-                Text(
-                    text = "另有 $pending 张旧卡片到期",
-                    style = type.small,
-                    color = colors.inkMuted,
-                    modifier = Modifier.clickable { navController.navigate(Routes.Settings.ReviewPractice) },
-                )
-            }
 
             Spacer(modifier = Modifier.height(Space.sm))
             // Full-width tappable row: a bare Text with clickable only covers the glyphs, which
@@ -219,21 +208,33 @@ fun MainHomeScreen() {
                 )
             }
 
-            // Everything below is reference, set small enough not to compete.
-            if (s != null) {
+            // Everything below is reference, set small enough not to compete. The figures are
+            // about points, not cards: a card count says how much work is queued, a point count
+            // says how much of your English is still wrong.
+            val st = stats
+            if (st != null) {
                 Spacer(modifier = Modifier.height(Space.xxxl))
                 RuleLine()
                 Spacer(modifier = Modifier.height(Space.lg))
                 FigureRow(
                     figures = listOf(
-                        "连续" to "${s.streakDays} 天",
-                        "今天" to "$doneToday 张",
-                        "正确" to "${s.accuracyToday}%",
+                        "待解决" to "${st.openPoints} 个",
+                        "已掌握" to "${st.masteredPoints} 个",
+                        "连续" to "${st.streakDays} 天",
                     ),
                 )
 
-                Spacer(modifier = Modifier.height(Space.xxl))
-                WeekLine(s.lastSevenDays)
+                if (st.expressions > 0) {
+                    Spacer(modifier = Modifier.height(Space.lg))
+                    Text(
+                        text = "已积累 ${st.expressions} 条地道说法",
+                        style = type.small,
+                        color = colors.inkMuted,
+                        modifier = Modifier.clickable {
+                            navController.navigate(Routes.Settings.Expressions)
+                        },
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(Space.xxl))
@@ -283,52 +284,6 @@ private fun FigureRow(figures: List<Pair<String, String>>) {
     }
 }
 
-/**
- * The week as seven short rules, one per day, with the count underneath only where it is
- * non-zero. Empty days are a faint mark, not a zero — the absence is the signal.
- */
-@Composable
-private fun WeekLine(days: List<Int>) {
-    val colors = YijianTheme.colors
-    val type = YijianTheme.type
-    if (days.isEmpty()) return
-    val weekdays = listOf("一", "二", "三", "四", "五", "六", "日")
-    Column {
-        Text(text = "本周", style = type.label, color = colors.inkMuted)
-        Spacer(modifier = Modifier.height(Space.md))
-        Row(horizontalArrangement = Arrangement.spacedBy(Space.md)) {
-            days.forEachIndexed { i, count ->
-                val isToday = i == days.lastIndex
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = weekdays[i % 7],
-                        style = type.label,
-                        color = if (isToday) colors.ink else colors.inkMuted,
-                    )
-                    Spacer(modifier = Modifier.height(Space.xs))
-                    // A 2 dp bar whose height encodes the volume; zero days get a dot.
-                    Box(
-                        modifier = Modifier
-                            .size(width = 16.dp, height = 3.dp)
-                            .background(
-                                when {
-                                    count == 0 -> colors.rule
-                                    isToday -> colors.ink
-                                    else -> colors.inkMuted
-                                }
-                            ),
-                    )
-                    Spacer(modifier = Modifier.height(Space.xs))
-                    Text(
-                        text = if (count > 0) "$count" else "",
-                        style = type.small,
-                        color = colors.ink,
-                    )
-                }
-            }
-        }
-    }
-}
 
 /** A quiet inline notice. One line of colour, not a filled banner. */
 @Composable

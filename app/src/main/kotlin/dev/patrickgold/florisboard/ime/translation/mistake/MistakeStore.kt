@@ -250,15 +250,18 @@ object MistakeStore {
     /** Records one review outcome for a point and reschedules it. */
     suspend fun recordReview(pointId: String, correct: Boolean, now: Long = System.currentTimeMillis()) =
         withContext(Dispatchers.IO) {
-            mutex.withLock {
+            val recorded = mutex.withLock {
                 val points = readPoints()
-                val p = points[pointId] ?: return@withLock
+                val p = points[pointId] ?: return@withLock false
                 val history = (p.history + correct).takeLast(MistakePoint.HISTORY_WINDOW)
                 val updated = p.copy(history = history, lastReviewedAt = now)
-                val next = reschedule(updated, correct, now)
-                points[pointId] = next
+                points[pointId] = reschedule(updated, correct, now)
                 writePoints(points)
+                true
             }
+            // Outside the lock: the daily tally has its own, and holding this one while
+            // taking it would serialise two unrelated stores.
+            if (recorded) ReviewStatsSource.recordReview(correct, now)
         }
 
     /**
